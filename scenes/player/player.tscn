@@ -1,0 +1,14 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/presentation/player/player_view.gd" id="1_view"]
+[ext_resource type="Script" path="res://scripts/presentation/player/player_presenter.gd" id="2_presenter"]
+
+[node name="Player" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 1
+motion_mode = 1
+script = ExtResource("1_view")
+move_speed = 110.0
+
+[node name="Presenter" type="Node" parent="."]
+script = ExtResource("2_presenter")
