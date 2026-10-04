@@ -1,0 +1,10 @@
+# Caché y artefactos de importación de Godot.
+# Se regeneran con `godot --headless --import`; no son fuente.
+.godot/
+
+# El binario exportado de una compilación de escritorio.
+build/
+*.exe
+
+# Salidas de captura de pantalla y logs de pruebas.
+*.tmp

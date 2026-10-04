@@ -11,6 +11,7 @@ realidad.
 | Acción | Teclas |
 | --- | --- |
 | Mover | `WASD` o flechas |
+| Golpear | `Espacio` o clic izquierdo |
 | Cerrar el juego | `Esc` |
 
 Las acciones de entrada están declaradas en `project.godot` con nombres estables
@@ -33,8 +34,9 @@ derecha. La decide el eje dominante de la intención de movimiento y se comunica
 por señal, de modo que las animaciones futures la consuman sin conocer el
 movimiento.
 
-`MovementController.block_for(segundos)` inmoviliza al jugador. Existe para el
-aturdimiento del combate; todavía ningún sistema lo llama.
+`MovementController.block_for(segundos)` inmoviliza al jugador. Lo llama el
+presentador cuando `MeleeCombat` avisa de un aturdimiento, así que el jugador no
+puede moverse mientras está HURT.
 
 ## 3. Cámara
 
@@ -88,8 +90,8 @@ DEAD -> (terminal; la reaparición la decide GameSession, no la máquina)
 ```
 
 `Player.transition_to()` es el único camino: si la transición no está en la
-tabla, se rechaza y se registra en el log. En Fase 1 solo se usan `IDLE`,
-`MOVING` y `DEAD`; `ATTACKING` y `HURT` ya están reservados y conectados.
+tabla, se rechaza y se registra en el log. El combate usa ya `ATTACKING` (al
+golpear y mientras dura la recuperación) y `HURT` (al recibir daño).
 
 ## 6. Estadísticas
 
@@ -133,16 +135,12 @@ el dominio y el decor solo mostrará el estado resultante.
 
 ## 8. Pendiente para completar el MVP
 
-Nada de esto existe todavía. Es el trabajo restante de la Fase 1.
-
-- [ ] **Animaciones**: ahora el jugador es un rectángulo con un triángulo de
-      orientación. Necesita cuatro estados de caminar.
-- [ ] **Combate**: ataque cuerpo a cuerpo con distancia, cooldown, daño
-      (`max(1, attack_damage - defense)`), detección de objetivo e
-      invulnerabilidad temporal (`GameConfig.INVULNERABILITY_TIME = 0.6`).
-      Requiere la capa `hitbox` y conectar `ATTACKING` / `HURT`.
-- [ ] **Armas**: piedra y cuchillo. La fórmula del daño debe vivir en el dominio
-      para que cambiarla no obligue a tocar las armas.
+- [x] **Animaciones**: el jugador se dibuja a código con cuatro orientaciones,
+      ciclo de paso, pose de golpe y parpadeo al aturdirse.
+- [x] **Combate**: golpe con distancia, cooldown, daño `max(1, ataque - defensa)`,
+      detección de objetivo por hitbox e invulnerabilidad temporal.
+- [x] **Armas**: piedra y cuchillo, con durabilidad. La fórmula del daño vive en
+      `DamageRules`, en el dominio, no en el arma.
 - [ ] **Inventario**: `add_item`, `remove_item`, `has_item`, `get_quantity`,
       `use_item`, `equip_item`, `unequip_item`, con capacidad inicial de 20.
 - [ ] **Objetos**: definición genérica con `type`, `stackable` y `max_stack`,
@@ -153,6 +151,42 @@ Nada de esto existe todavía. Es el trabajo restante de la Fase 1.
 - [ ] **HUD**: vida, stamina, inventario.
 - [ ] **Muerte y reaparición jugables**: hoy la reaparición existe como caso de
       uso pero no hay forma de invocarla desde el juego.
+
+## 8bis. Combate cuerpo a cuerpo
+
+El golpe sale de `MeleeCombat` (Application) y la física solo dice a quién ha
+tocado la `HitboxSensor` (Presentation).
+
+| pieza | responsabilidad |
+| --- | --- |
+| `DamageRules` | la fórmula `max(1, ataque - defensa)`, en el dominio |
+| `Weapon` / `WeaponCatalog` | cuánto pega, hasta dónde llega, cuánto espera |
+| `MeleeCombat` | cooldown, ventana de golpe, aturdimiento, invulnerabilidad |
+| `HitboxSensor` | un círculo que se enciende solo durante la ventana |
+
+Reglas vigentes:
+
+- La hitbox permanece **apagada** y se enciende con `attack_started`: un sensor
+  siempre activo detectaría cuerpos a la espalda.
+- El círculo se coloca **desplazado hacia delante** (`HITBOX_FORWARD_RATIO` del
+  alcance), no centrado en el jugador.
+- Cada objetivo solo recibe daño **una vez por golpe**, aunque la hitbox siga
+  encendida.
+- Al recibir daño el jugador queda **aturdido** (`HURT_STUN_TIME`), lo que llama a
+  `MovementController.block_for()`.
+- Tras un golpe hay **invulnerabilidad** (`INVULNERABILITY_TIME`) para que un
+  enemigo no repita daño cada frame.
+
+| arma | daño | alcance | cooldown | stamina | durabilidad |
+| --- | --- | --- | --- | --- | --- |
+| Piedra | 5 | 20 px | 0.45 s | 4 | 40 |
+| Cuchillo | 9 | 15 px | 0.28 s | 6 | 60 |
+
+El cuchillo pega más y más rápido, pero llega menos lejos y cansa más: es el
+arma de combate cercano, la piedra el arma de confianza.
+
+Un arma sin `max_durability` no se rompe nunca. Cuando la durabilidad llega a 0
+el arma `is_broken` y `can_attack()` es `false`.
 
 ## 9. Qué NO debe colarse en el MVP
 

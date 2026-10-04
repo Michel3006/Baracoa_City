@@ -10,6 +10,7 @@ extends SceneTree
 ## con código 1 si hay algún fallo, para poder integrarlo en CI.
 
 const TEST_FILES: PackedStringArray = [
+	"res://tests/unit/test_script_integrity.gd",
 	"res://tests/unit/test_player_state.gd",
 	"res://tests/unit/test_health.gd",
 	"res://tests/unit/test_character_stats.gd",
@@ -39,6 +40,13 @@ func _run_file(path: String) -> void:
 	if script == null:
 		_failures.append("%s: no se pudo cargar" % path)
 		print("  [ERROR] %s no se pudo cargar" % path)
+		return
+	# Un archivo de test con error de parseo carga como GDScript pero no se puede
+	# instanciar. Sin esta comprobación el runner lo salta en silencio y la suite
+	# sale en verde con casos sin ejecutar.
+	if not script.can_instantiate():
+		_failures.append("%s: compila con errores" % path)
+		print("  [ERROR] %s no compila" % path)
 		return
 	var test_case: RefCounted = script.new()
 	print("-- %s" % path.get_file())

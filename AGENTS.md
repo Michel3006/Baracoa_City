@@ -12,16 +12,19 @@ la primera tarea concreta.
 
 ## Dónde estamos
 
-**Fase 1 (prototipo offline), pasos 1 a 9 cerrados. Paso 10 verificado.**
+**Fase 1 (prototipo offline). Pasos 1 a 10 cerrados, combate y armas hechos.**
 
 Última verificación, todo en verde:
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 30/30 pruebas correctas
+# RESULTADO: 61/61 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
+
+godot --headless --script res://tests/integration/combat_runner.gd
+# RESULTADO: 9/9 pruebas correctas
 ```
 
 Los pasos 1 a 10 de la sección 37:
@@ -40,44 +43,42 @@ Los pasos 1 a 10 de la sección 37:
 | 10. Ejecutar y verificar | hecho |
 
 La sección 37 dice explícitamente: no avanzar al combate hasta que esto funcione.
-Ya funciona, así que el siguiente incremento es el combate.
+Ya funciona, y el combate también.
+
+### El combate estuvo roto y las pruebas no lo dijeron
+
+Conviene saberlo, porque es la clase de fallo que se repite. `HitboxSensor`
+llamaba a `add_excluded_object()`, que es API de `CollisionObject3D`. Dos
+consecuencias:
+
+1. El script no compilaba, así que arrastraba a los ocho scripts que lo
+   referenciaban. El error no paraba el juego: Godot lo escribía en consola y
+   seguía. `HitboxSensor.new()` fallaba en `_ready()` y la hitbox **nunca
+   existía**.
+2. Los tests seguían en verde. Los unitarios de `MeleeCombat` no dependen de la
+   física, y los de integración comprobaban colisiones, no golpes. El combate
+   "funcionaba" en las pruebas y no en el juego.
+
+De ahí las dos defensas que hay ahora:
+
+- `tests/unit/test_script_integrity.gd` recorre `scripts/` y obliga a que todo
+  cargue y compile. Se comprobó reintroduciendo el fallo: la suite baja a 60/61
+  diciendo qué script no compila.
+- `tests/integration/combat_runner.gd` prueba la cadena real (presentador ->
+  hitbox -> daño). Desconectar el combate del presentador lo baja a 6/9.
+
+**Regla que sale de esto:** si unaSuite da error por consola, no está verde.
+Mirar el log, no solo el `RESULTADO`.
 
 ## Qué falta, en orden
 
 Es la lista de trabajo real. No inventar alcance extra: la especificación ya
 define el orden.
 
-### 1. Animaciones (rápido)
+### 1. Inventario y objetos
 
-El jugador es un rectángulo con un triángulo de orientación
-(`scripts/presentation/player/player_view.gd`). Faltan cuatro estados de caminar.
-`PlayerView.set_facing()` y `apply_motion()` ya existen y emiten señales, así que
-la animación se engancha ahí sin tocar el movimiento.
-
-### 2. Combate cuerpo a cuerpo
-
-Es el siguiente incremento grande. Ya está preparado:
-
-- capa de física `hitbox` declarada en `project.godot` y en `CollisionLayers`;
-- `PlayerState.Kind.ATTACKING` y `HURT` existen y sus transiciones están
-  validadas;
-- `GameConfig.DEFAULT_ATTACK_COOLDOWN = 0.45` e
-  `GameConfig.INVULNERABILITY_TIME = 0.6`;
-- `MovementController.block_for()` existe para el aturdimiento y aún nadie lo
-  llama.
-
-Falta: rango de ataque, cooldown, detección de objetivo, cálculo de daño con
-`max(1, attack_damage - defense)` e invulnerabilidad temporal.
-
-**La fórmula del daño tiene que vivir en el dominio**, no en el arma, para poder
-cambiarla sin reescribir armas ni personajes (sección 10).
-
-### 3. Armas: piedra y cuchillo
-
-Solo esas dos. Las armas de fuego están prohibidas en el MVP (sección 7).
-`*_damage`, `attack_range`, `attack_cooldown`, `stamina_cost` y `durability`.
-
-### 4. Inventario y objetos
+Lo siguiente. No existe nada de esto todavía: no hay `scripts/domain/inventory/`
+ni `scripts/domain/item/`.
 
 - `Inventory` con `add_item`, `remove_item`, `has_item`, `get_quantity`,
   `use_item`, `equip_item`, `unequip_item` y capacidad
@@ -86,22 +87,26 @@ Solo esas dos. Las armas de fuego están prohibidas en el MVP (sección 7).
   WEAPON / CONSUMABLE / MATERIAL / QUEST / CURRENCY / CLOTHING / TOOL / MISC. No
   hace falta implementar todos los tipos.
 - El inventario no debe saber nada de gráficos; la UI lo consulta.
+- `MeleeCombat.equip()` ya existe y es el gancho: no tocarlo para añadir
+  inventario.
 
-### 5. NPC
+### 2. NPC
 
 Al menos uno, con `stats`, `state`, `position`, `behavior` y los estados IDLE /
-WANDER / CHASE / ATTACK / FLEE / DEAD. Sin IA avanzada. Existe
-`scripts/domain/npc/` vacío y la capa de física `npc` declarada.
+WANDER / CHASE / ATTACK / FLEE / DEAD. Sin IA avanzada. La capa de física `npc`
+ya está declarada.
 
 `Player` y `Health` ya son reutilizables por un NPC: `Health` no depende de nada
 de jugador.
 
-### 6. HUD y muerte jugable
+El NPC tiene que ser un `CharacterBody2D`, ver la nota de `Area2D` más abajo.
+
+### 3. HUD y muerte jugable
 
 `GameSession.respawn()` existe pero no hay forma de invocarla desde el juego.
 Falta HUD (vida, stamina, inventario) y el ciclo morir y reaparecer.
 
-### 7. Tests de lo que se añada
+### 4. Tests de lo que se añada
 
 Los runners ya existen. Los unitarios no necesitan `SceneTree`; los que sí, van a
 `tests/integration/` con su propio runner.
@@ -125,11 +130,14 @@ Los runners ya existen. Los unitarios no necesitan `SceneTree`; los que sí, van
 ## Comandos
 
 ```bash
-# tests unitarios (30)
+# tests unitarios (61)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)
 godot --headless --script res://tests/integration/world_physics_runner.gd
+
+# tests de integracion de combate (9)
+godot --headless --script res://tests/integration/combat_runner.gd
 
 # captura un frame: <salida> [frames] [x] [y] [zoom]
 godot --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 380 1
@@ -137,6 +145,14 @@ godot --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 380 1
 # reimportar tras cambiar project.godot
 godot --headless --import
 ```
+
+Dos avisos sobre estos comandos:
+
+- Tras clonar o cambiar `project.godot`, correr `--headless --import` **antes** de
+  los tests. Sin el caché de clases globales, `class_name` no resuelve y el runner
+  no compila.
+- El resultado se lee en el `RESULTADO` **y** en el log. Un `SCRIPT ERROR` por
+  consola significa que algo está mal aunque el resultado sea verde.
 
 ## Entorno
 
@@ -153,9 +169,24 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 
 - Descarga lenta: ~78 MB, dejar tiempo.
 - `export LC_ALL=C LANG=C` para quitar el ruido `xkbcommon` en consola.
+- `~/.local/bin` puede no existir en una máquina nueva: crearlo antes del
+  `ln -sf`, o el enlace falla.
 
 ## Detalles del diseño que conviene no redescubrir
 
+- **`Area2D` no tiene lista de excepciones en Godot 4.** Ni `add_exception()` ni
+  `add_excluded_object()` existen ahí: las excepciones son de `PhysicsBody2D`
+  (`add_collision_exception_with()`). Un `Area2D` hijo del jugador, en la misma
+  capa, detecta al propio jugador, así que `HitboxSensor` lo filtra en
+  `overlapping_bodies()` con su propia lista `_ignored`. No volver a intentar
+  delegarlo en el motor: no existe.
+- **`Area2D.get_overlapping_bodies()` no ve `StaticBody2D`.** Comprobado: un
+  `StaticBody2D` añadido en tiempo de ejecución, en la posición exacta y con la
+  capa correcta, no aparece nunca, ni tras 200 frames ni reactivando
+  `monitoring`. Un `CharacterBody2D` en el mismo sitio se detecta a la primera.
+  Los objetivos de golpeo (NPC) tienen que ser `CharacterBody2D`, que además es lo
+  natural porque se mueven. `intersect_shape()` sí encuentra los estáticos: no
+  fiarse de esa vía para diagnosticar hitboxes.
 - **Resolución 384x216**: 16:9 exacto, escala de ventana x3, tile de 16 px. Ojo:
   216 **no** es múltiplo de 16. No escribir tests que asuman lo contrario.
 - **Zoom de cámara 3**: la imagen guardada por `screenshot.gd` es de 384x216, y

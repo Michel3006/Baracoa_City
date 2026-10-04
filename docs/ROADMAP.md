@@ -29,16 +29,17 @@ Base terminada:
 - [x] Jugador provisional con movimiento, orientación y colisiones.
 - [x] Dominio de vida, daño, muerte y reaparición.
 - [x] Máquina de estados con transiciones validadas.
-- [x] Tests unitarios headless del dominio y del movimiento (30 pruebas).
+- [x] Animaciones de caminar (4 direcciones) y pose de golpe, dibujadas a código.
+- [x] Combate cuerpo a cuerpo: rango, cooldown, daño, objetivo e invulnerabilidad.
+- [x] Armas: piedra y cuchillo, con durabilidad y desgaste.
+- [x] Tests unitarios headless del dominio, del combate y de la integridad de
+      scripts (61 pruebas).
 - [x] Tests de integración con física real: colisiones y sincronía
       dominio/vista (6 pruebas).
+- [x] Tests de integración de combate con la hitbox real (9 pruebas).
 
 Pendiente:
 
-- [ ] Animaciones de caminar (4 direcciones).
-- [ ] HUD provisional o al menos barra de vida visible sin inventario.
-- [ ] Combate cuerpo a cuerpo: rango, cooldown, daño, objetivo, invulnerabilidad.
-- [ ] Armas: piedra y cuchillo.
 - [ ] Inventario con capacidad y equipar.
 - [ ] Objetos genéricos con tipo y apilado.
 - [ ] Un NPC con comportamiento sencillo.

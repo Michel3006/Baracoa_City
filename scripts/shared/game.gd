@@ -71,7 +71,7 @@ func _build_world_view() -> void:
 func _on_player_spawned(player: PlayerView) -> void:
 	movement.bind(player)
 	session.bind_view(world_view)
-	world_view.connect_movement(movement)
+	world_view.connect_cases(movement, session.combat)
 	GameLogger.info(
 		"Jugador listo en %s" % player.global_position, "Game"
 	)

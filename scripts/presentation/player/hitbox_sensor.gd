@@ -24,6 +24,9 @@ signal body_found(body: Node)
 var _circle: CircleShape2D
 var _direction: Vector2 = Vector2.DOWN
 var _is_active: bool = false
+## Cuerpos que nunca deben contar como objetivo, típicamente el dueño de la
+## hitbox. Vive aquí porque el motor no ofrece excepciones para `Area2D`.
+var _ignored: Array[CollisionObject2D] = []
 
 
 func _ready() -> void:
@@ -76,18 +79,31 @@ var is_active: bool:
 
 ## Ignora un cuerpo propio. Sin esto la hitbox detectaría al propio jugador,
 ## que está en la misma capa.
+##
+## Ojo: en Godot 4 `Area2D` **no** tiene lista de excepciones. Solo
+## `PhysicsBody2D` ofrece `add_collision_exception_with()`, y una `Area2D` no es
+## un cuerpo físico. Por eso la exclusión se filtra aquí, al recoger los
+## solapamientos, en vez de delegar en el motor.
 func exclude_body(body: CollisionObject2D) -> void:
-	if body == null or body.get_rid() == RID():
+	if body == null or not is_instance_valid(body):
 		return
-	add_excluded_object(body.get_rid())
+	if not _ignored.has(body):
+		_ignored.append(body)
 
 
-## Cuerpos que la hitbox tiene encima ahora mismo.
+## ¿Este cuerpo se ha marcado como ignorado?
+func is_ignored(body: Object) -> bool:
+	return body != null and is_instance_valid(body) and _ignored.has(body)
+
+
+## Cuerpos que la hitbox tiene encima ahora mismo, ya filtrados.
 func overlapping_bodies() -> Array[Node2D]:
-	if not _is_active:
-		return [] as Array[Node2D]
 	var found: Array[Node2D] = []
+	if not _is_active:
+		return found
 	for body: Node2D in get_overlapping_bodies():
+		if is_ignored(body):
+			continue
 		found.append(body)
 	return found
 

@@ -50,12 +50,16 @@ func _spawn_player(spawn_position: Vector2) -> void:
 	player_spawned.emit(player)
 
 
-## Inyecta el caso de uso de movimiento. Lo llama la capa Application.
-func connect_movement(movement: MovementController) -> void:
+## Inyecta los casos de uso del jugador. Lo llama la capa Application.
+##
+## El presentador necesita los dos: el movimiento para traducir la intención de
+## entrada y el combate para el golpe. Se pasan juntos porque se conectan en el
+## mismo momento, al aparecer el jugador.
+func connect_cases(movement: MovementController, combat: MeleeCombat = null) -> void:
 	if presenter == null:
 		GameLogger.warning("El jugador no tiene presentador de entrada", "MainWorldView")
 		return
-	presenter.setup(player, movement)
+	presenter.setup(player, movement, combat)
 
 
 ## Desplaza al jugador. En Fase 2 sustituir por cambio de zona validado en servidor.
