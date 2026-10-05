@@ -217,6 +217,11 @@ condiciones.
 
 ## 8ter. Los enemigos
 
+**Ahora el juego arranca sin enemigos.** `GameConfig.NPC_ENABLED = false` deja la zona
+despejada: no se crea el director, ni los agentes, ni sus cuerpos en pantalla. Es
+ deliberado, para poder probar el movimiento y el mapa sin que la IA se meta en medio.
+ Con la bandera en `true` vuelve lo que se describe abajo.
+
 Seis enemigos de cuatro tipos del pack, con tres débiles y tres duros:
 
 | tipo | vida | daño | alcance | velocidad |

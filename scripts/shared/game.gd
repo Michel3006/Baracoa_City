@@ -101,7 +101,15 @@ func _build_world_view() -> void:
 
 ## Crea los enemigos. El director es de Application y no sabe nada de vistas: se
 ## guarda para conectarlo a la escena en cuanto exista.
+##
+## La bandera `GameConfig.NPC_ENABLED` decide si la zona arranca con enemigos o
+## despejada. Apagada, no se crea el director y todo lo que lo consulta ya está
+## preparado para `null` (`_distribute_target`, `_exit_tree` y el log del jugador),
+## así que la zona se puede recorrer entera sin que nada ataque al jugador.
 func _build_npcs() -> void:
+	if not GameConfig.NPC_ENABLED:
+		GameLogger.info("Enemigos desactivados (GameConfig.NPC_ENABLED)", "Game")
+		return
 	session.setup_npcs()
 
 

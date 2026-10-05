@@ -1,6 +1,23 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3]
 
-[ext_resource type="Script" path="res://scripts/presentation/world/main_world_view.gd" id="1_view"]
+; Escena principal del proyecto (application/run/main_scene en project.godot).
+;
+; OJO: aquí NO se construye el mundo. El mundo, el jugador, la cámara y el HUD los
+; levanta el autoload `Game` (scenes/shared/game.tscn -> scripts/shared/game.gd),
+; que es el composition root y el único punto que conoce las piezas a la vez
+; (ver docs/architecture/ARCHITECTURE.md, seccion 3).
+;
+; Esta escena estuvo un tiempo con el script `MainWorldView`, y eso construia un
+; SEGUNDO mundo entero al darle a F5: el autoload montaba el suyo y la escena
+; principal montaba otro encima. El que se veía era el de la escena principal, al que
+; nadie enchufaba el `MovementController` ni el `MeleeCombat`, asi que el jugador de
+; pantalla se quedaba clavado y su presentador no hacia nada. El que si se movia
+; quedaba tapado por los tiles del otro mundo, y solo se veian las cosas con
+; z_index por encima del terreno: el sprite del arma (z=1), los enemigos (z=1) y los
+; arcos de golpe (z=8). De ahi el sintoma de "solo se mueve el arma".
+;
+; Un nodo vacio es justo lo que hace falta: Godot necesita una escena principal para
+; arrancar, y el juego ya esta montado antes de que esta escena entre en el arbol
+; (los autoload se montan antes que la escena principal).
 
 [node name="Main" type="Node2D"]
-script = ExtResource("1_view")

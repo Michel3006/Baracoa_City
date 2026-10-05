@@ -118,6 +118,19 @@ const FX_ORIGIN_OFFSET := 6.0
 const FX_Z_INDEX := 8
 
 # --- NPC (seccion 18) ---
+## Interruptor de enemigos. En `false` el juego arranca con la zona despejada: no se
+## crea el director, ni los agentes, ni sus cuerpos en pantalla.
+##
+## Es lo que se usa para probar el movimiento y el mapa sin que seis enemigos
+## persiguiendo al jugador se confundan con que el jugador no se mueve: el aturdimiento
+## al recibir un golpe congela el movimiento, y con el mapa lleno parece un fallo de
+## los WASD cuando en realidad es la IA. Ponerlo en `true` devuelve los enemigos.
+##
+## Vive aquí y no en `Game` porque es contenido del juego, no cableado: cualquier
+## ajuste del MVP va en `GameConfig` (sección 28). Los tests de NPC no lo consultan:
+## ellos montan su propia zona (ver `npc_combat_runner._ensure_npcs()`), así que esta
+## bandera puede estar apagada sin que la suite pierda nada.
+const NPC_ENABLED := false
 ## Cada cuanto se reparte el objetivo entre los enemigos. Solo reparta, no mueve ningun
 ## reloj, asi que puede ir a su aire sin tocar el ritmo de la IA.
 ##

@@ -39,6 +39,8 @@ func _run() -> void:
 	_context = ScriptTestContext.new()
 	print("== Tests de integracion (NPC) ==")
 
+	_ensure_npcs()
+
 	_presenter().set_physics_process(false)
 	for presenter: NpcPresenter in _spawner().presenters():
 		presenter.set_physics_process(false)
@@ -87,6 +89,20 @@ func _report() -> void:
 
 
 # --- acceso a la escena montada ---
+
+## Deja la zona con enemigos aunque el juego arranque sin ellos.
+##
+## El juego arranca con `GameConfig.NPC_ENABLED` en `false` para poder probar el
+## movimiento sin que la IA se meta. Depender de que el autoload haya poblado la zona
+## ataría esta suite al contenido por defecto del juego, y el día que se cambie la
+## bandera estos 18 tests se caerían sin que haya cambiado una línea de NPC. Aquí se
+## montan los enemigos con la misma API que usa `Game`, así que lo que se prueba es la
+## zona real y no una copia.
+func _ensure_npcs() -> void:
+	if _director() != null:
+		return
+	_world().setup_npcs(_session().setup_npcs())
+
 
 func _game() -> Node:
 	return root.get_node("Game")

@@ -29,7 +29,14 @@ godot --headless --script res://tests/integration/combat_runner.gd
 
 godot --headless --script res://tests/integration/npc_combat_runner.gd
 # RESULTADO: 18/18 pruebas correctas
+
+godot --headless --script res://tests/integration/startup_runner.gd
+# RESULTADO: 7/7 pruebas correctas
 ```
+
+Los enemigos están **desactivados** (`GameConfig.NPC_ENABLED = false`): el juego
+arranca con la zona despejada para poder probar el movimiento y el mapa sin que la IA
+se meta en medio. Para volver a encenderlos, ese `false` a `true`.
 
 Los pasos 1 a 10 de la sección 37:
 
@@ -111,6 +118,46 @@ se cerraba un ciclo completo, así que los primeros 0,5 s de caminata salían co
 misma pose. Lo encontró `test_actor_sprite` al comprobar que el ciclo pasa por los
 cuatro fotogramas.
 
+### Había dos mundos y el que se veía no estaba conectado a nada
+
+El más caro de todos, y el mismo género que los anteriores. Al darle a F5 no se movía
+el jugador: se movía el arma.
+
+La causa: `project.godot` carga `scenes/world/main.tscn` como escena principal, y esa
+escena tenía el script `MainWorldView`. Pero el mundo lo monta el autoload `Game`, que
+es el composition root. O sea que al arrancar se construían **dos mundos enteros**: el
+del autoload, con el `MovementController` enchufado, y el de la escena principal,
+montado encima y sin un solo caso de uso. De los dos se dibujaba el segundo, con el
+jugador clavado, y como se montaba después le tocó a él el `make_current()` de la
+cámara. El jugador que sí se movía quedaba tapado por los tiles del otro mundo, y solo
+se veían las cosas con `z_index` por encima del terreno: el sprite del arma (z=1), los
+enemigos (z=1) y los arcos de golpe (z=8). De ahí el "el arma sí se mueve".
+
+Las cuatro suites que había estaban en verde, y cada una por su motivo:
+
+- Los unitarios no montan escenas.
+- Los tres runners de integración usan `--script`, que carga los autoload pero **no**
+  la escena principal. Es decir: ninguno había visto nunca lo que sale al darle a F5.
+- Los de integración miraban `Game.world_view`, que sí estaba bien montado. El problema
+  era el otro, y no lo buscaban.
+
+La defensa es `tests/integration/startup_runner.gd`: carga la escena de
+`application/run/main_scene` encima del autoload, igual que hace F5, y comprueba que
+el árbol tiene **un** `MainWorldView` y **un** jugador, que ese jugador tiene el
+`MovementController` y el `MeleeCombat`, que la cámara activa sigue a ese mismo
+jugador, y que pulsando `move_right` se mueve. Con el fallo puesto baja a 5/7
+diciendo "hay 2 copias de MainWorldView".
+
+**Reglas que salen de esto:**
+
+- **Un runner con `--script` no ve la escena principal.** Para probar el arranque hay
+  que cargarla a mano desde `ProjectSettings.get_setting("run/main_scene")`.
+- **Nada que monte una segunda vez lo que ya monta el composition root.** Si dos nodos
+  compiten por el mismo papel, el último que se monta se queda con la cámara
+  (`make_current()`) y con el dibujo, y el primero queda debajo sin que nadie se entere.
+- **`z_index` delata lo que está debajo.** Un sprite que se ve y el cuerpo que no, con
+  el `z_index` del sprite por encima del terreno, es la firma de un nodo tapado por otro.
+
 ## Qué falta, en orden
 
 Es la lista de trabajo real. No inventar alcance extra: la especificación ya
@@ -161,6 +208,12 @@ Los runners ya existen. Los unitarios no necesitan `SceneTree`; los que sí, van
 `teardown()`: el runner lo llama tras cada caso, y sin él Godot avisa de fugas al
 salir, que es un error por consola como cualquier otro.
 
+Si lo que se toca es el arranque, lo que se mueve o lo que se ve, el sitio es
+`startup_runner.gd`, y **no** hay que añadir casos a los otros: los otros tres miran un
+solo mundo y por eso los cuatro suites possono estar en verde con el juego roto. Y si
+un runner necesita enemigos, que los monte él (`npc_combat_runner._ensure_npcs()`):
+depender de `GameConfig.NPC_ENABLED` ataría la suite a una bandera.
+
 ## Reglas que no se negocian
 
 1. **El dominio no depende de Godot.** `Player`, `Health`, `CharacterStats` y
@@ -191,6 +244,9 @@ godot --headless --script res://tests/integration/combat_runner.gd
 
 # tests de integracion de NPC (18)
 godot --headless --script res://tests/integration/npc_combat_runner.gd
+
+# tests de integracion de arranque (7)
+godot --headless --script res://tests/integration/startup_runner.gd
 
 # captura un frame: <salida> [frames] [x] [y] [zoom]
 godot --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 380 1

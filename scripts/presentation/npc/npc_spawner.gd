@@ -38,6 +38,11 @@ func _ready() -> void:
 
 ## Conecta el director y monta un cuerpo por cada enemigo que ya tenga.
 func bind(source: NpcDirector) -> void:
+	# Conectar dos veces las mismas señales hace que cada enemigo reciba el aviso
+	# duplicado, así que volver a pasarle el mismo director no hace nada. Quien llama
+	# no tiene que saber si ya estaba conectado.
+	if director == source:
+		return
 	director = source
 	if director == null:
 		GameLogger.warning("El generador de NPC no tiene director", "NpcSpawner")

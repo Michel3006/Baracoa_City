@@ -61,9 +61,32 @@ El resto del código recibe sus colaboradores por setter (`bind`, `setup`,
 `connect_cases`) o por signals. No hay singletons adicionales ni
 localizadores de servicios.
 
+### La escena principal no monta el mundo
+
+`scenes/world/main.tscn` es la escena de `application/run/main_scene` y **no lleva
+ningún script**: es un `Node2D` vacío. Godot necesita una escena principal para
+arrancar, y el juego ya está montado antes de que esa escena entre en el árbol,
+porque los autoload se cargan antes que la escena principal.
+
+Que esa escena sea un `MainWorldView` fue un bug de lo más caro del proyecto, así que
+conviene escribir por qué no puede volver a serlo. Con el script puesto, al darle a F5
+se acababan con **dos mundos**: el del autoload, con el `MovementController` enchufado, y
+el de la escena principal, montado encima y sin un solo caso de uso. El que se
+dibujaba era el segundo, con el jugador clavado, y como se montaba después le tocó a
+él el `make_current()` de la cámara. El jugador que sí se movía quedaba tapado por los
+tiles del otro mundo, y solo se veían las cosas con `z_index` por encima del terreno:
+el sprite del arma (z=1), los enemigos (z=1) y los arcos de golpe (z=8). El síntoma era
+"el jugador no se mueve pero el arma sí", y las cuatro suites que había estaban en verde
+porque cada una miraba un solo mundo. Un runner con `--script` carga los autoload pero
+no la escena principal, así que ninguna podía verlo: de ahí
+`tests/integration/startup_runner.gd`, que reproduce el arranque real y comprueba que
+**lo que se ve es lo que se mueve**.
+
 El orden importa: los enemigos se crean **antes** que la escena del mundo, porque
 `MainWorldView` avisa de que el jugador está listo mientras se construye y para ese
-aviso ya tiene que saber cuántos enemigos hay en la zona.
+aviso ya tiene que saber cuántos enemigos hay en la zona. Con
+`GameConfig.NPC_ENABLED` en `false` no se crean, y todo lo que consulta al director ya
+está preparado para `null`.
 
 Dos relojes, y ninguno toca los casos de uso de otro:
 
@@ -150,7 +173,8 @@ tests/
 └── integration/
     ├── world_physics_runner.gd     6 pruebas
     ├── combat_runner.gd            11 pruebas
-    └── npc_combat_runner.gd        18 pruebas
+    ├── npc_combat_runner.gd        18 pruebas
+    └── startup_runner.gd           7 pruebas
 ```
 
 ### Qué NO hereda el combate del enemigo
@@ -211,6 +235,9 @@ godot --headless --script res://tests/integration/combat_runner.gd
 # 18 pruebas del enemigo: IA, golpe de ida y vuelta, muerte y reaparición
 godot --headless --script res://tests/integration/npc_combat_runner.gd
 
+# 7 pruebas de arranque: un solo mundo, cámara y jugador reales, WASD de verdad
+godot --headless --script res://tests/integration/startup_runner.gd
+
 # Captura un frame para inspeccion visual
 godot --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 432 1
 ```
@@ -229,10 +256,16 @@ también se pueden probar así: `Sprite2D` se configura y se consulta fuera del 
 
 Los tests de integración sí lo necesitan, porque `move_and_slide()` solo resuelve
 colisiones cuando el servidor de física ha avanzado. Por eso viven en un runner
-propio. Hay tres y no uno: cada suite tiene que **bajar de forma distinta** cuando se
+propio. Hay cuatro y no uno: cada suite tiene que **bajar de forma distinta** cuando se
 le rompe su cadena. En el runner de combate se desconecta el presentador y bajan tres
 casos; en el de enemigos, sin cuerpos `CharacterBody2D` o sin reparto de objetivo,
-bajan las de la IA.
+bajan las de la IA; en el de arranque, con un `MainWorldView` de más en
+`run/main_scene`, bajan el recuento de mundos, la cámara activa y el movimiento.
+
+El runner de enemigos monta su propia zona (`_ensure_npcs()`) en vez de fiarse de que
+el autoload la haya poblado, porque el juego arranca con `GameConfig.NPC_ENABLED`
+apagado. Atar la suite al contenido por defecto del juego es atarla a una bandera, y
+así los 18 casos siguen significando lo mismo se enciendan o apaguen los enemigos.
 
 `screenshot.gd` acepta `x`, `y` y `zoom`: teletransporta al jugador y ajusta el
 aumento de la camara, lo que permite inspeccionar una zona entera o un elemento
