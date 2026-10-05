@@ -17,7 +17,11 @@ const WINDOW_SCALE := 3
 const TILE_SIZE := 16
 
 # --- Jugador ---
-const PLAYER_SPEED := 60.0
+## Velocidad de caminar, en píxeles de mundo por segundo. Es el valor con el que se
+## juega: el `PlayerView` lo toma de aquí y el presentador se lo pasa al
+## `MovementController`. Antes la vista traía el suyo (110) y ganaba, así que este
+## 60 no era el que movía al jugador.
+const PLAYER_SPEED := 110.0
 const PLAYER_MAX_HEALTH := 100
 const PLAYER_MAX_STAMINA := 100
 const PLAYER_START_STAMINA := 100.0

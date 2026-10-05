@@ -46,7 +46,35 @@ func register() -> Array:
 		["el golpe a puños pega menos que con arma", _unarmed_hits_softer],
 		["el golpe a puños también se bloquea", _unarmed_is_blocked_too],
 		["la barra de golpe mide contra el golpe en curso", _cooldown_ratio_follows_strike],
+		["el fin del golpe no depende del estado del jugador", _finished_survives_a_state_change],
 	]
+
+
+## `attack_finished` sale del reloj del golpe, nunca del estado del jugador.
+##
+## Antes la señal solo se emitía si al cumplirse la recuperación el jugador seguía en
+## `ATTACKING`, y eso nunca pasaba: el movimiento sincronizaba el estado en cada
+## fotograma (`GameSession._sync_motion_state()`) y ponía `MOVING` encima en el
+## fotograma siguiente al golpe. La señal no salía, la vista se quedaba en la pose de
+## golpe para siempre y el jugador caminaba con el cuerpo congelado.
+##
+## Aquí se reproduce esa situación sin más que un `transition_to()`: es exactamente lo
+## que le pasaba al estado desde fuera del caso de uso, y el reloj no se debe enterar.
+func _finished_survives_a_state_change(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var events: Array[String] = []
+	combat.attack_finished.connect(func() -> void: events.append("golpe"))
+
+	ctx.check(combat.try_attack(), "el golpe sale")
+	# Alguien se lleva al jugador de ATTACKING antes de que venza la recuperación.
+	combat.player.transition_to(PlayerState.Kind.MOVING)
+	combat.advance(GameConfig.ATTACK_RECOVERY + DELTA)
+
+	ctx.check_equal(events, ["golpe"], "la señal sale aunque el estado ya no sea ATTACKING")
+	ctx.check(
+		combat.player.state == PlayerState.Kind.MOVING,
+		"el reloj no pisa el estado que puso otro sistema (%s)" % PlayerState.name_of(combat.player.state)
+	)
 
 
 func _attack_enters_state(ctx: ScriptTestContext) -> void:

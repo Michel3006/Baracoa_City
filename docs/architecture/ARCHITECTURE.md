@@ -169,12 +169,12 @@ tests/
 ├── support/test_runner.gd          runner unitario
 ├── support/screenshot.gd           captura de frame
 ├── support/script_test_context.gd  aserciones
-├── unit/                           14 archivos, 110 pruebas
+├── unit/                           14 archivos, 111 pruebas
 └── integration/
     ├── world_physics_runner.gd     6 pruebas
     ├── combat_runner.gd            11 pruebas
     ├── npc_combat_runner.gd        18 pruebas
-    └── startup_runner.gd           7 pruebas
+    └── startup_runner.gd           16 pruebas
 ```
 
 ### Qué NO hereda el combate del enemigo
@@ -223,7 +223,7 @@ del rectángulo jugable: mantiene al jugador dentro sin gastar tiles de borde.
 ## 8. Testing
 
 ```bash
-# 110 pruebas de dominio, combate, enemigos, sprites y configuracion
+# 111 pruebas de dominio, combate, enemigos, sprites y configuracion
 godot --headless --script res://tests/support/test_runner.gd
 
 # 6 pruebas con fisica real: colisiones y sincronía dominio/vista

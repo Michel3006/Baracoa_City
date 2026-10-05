@@ -157,11 +157,19 @@ func apply_motion(moved: Vector2, direction: Vector2) -> void:
 	_sync_motion_state(moved)
 
 
+## Sincroniza el estado de movimiento con lo que ha hecho la física.
+##
+## El movimiento es dueño de `IDLE` y `MOVING`, y de nada más. `ATTACKING` lo abre y
+## lo cierra el combate con su propio reloj, `HURT` el daño y `DEAD` la reaparición.
+## Si el movimiento los pisara en cada fotograma, `ATTACKING` duraría un único
+## fotograma y el estado del jugador no diría nada de lo que está pasando: que el
+## golpe empiece a terminar sin llegar nunca a `IDLE`.
 func _sync_motion_state(moved: Vector2) -> void:
-	if moved.is_zero_approx():
-		player.transition_to(PlayerState.Kind.IDLE)
-	else:
-		player.transition_to(PlayerState.Kind.MOVING)
+	if player.state != PlayerState.Kind.IDLE and player.state != PlayerState.Kind.MOVING:
+		return
+	player.transition_to(
+		PlayerState.Kind.IDLE if moved.is_zero_approx() else PlayerState.Kind.MOVING
+	)
 
 
 ## Reaparición tras morir. El caso de uso decide el punto de reaparición;

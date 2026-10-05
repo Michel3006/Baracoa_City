@@ -42,7 +42,7 @@ Base terminada:
       borrosa a 384x216).
 - [x] Muerte y reaparición jugables, con tinte de pantalla y botón de revivir.
 - [x] Tests unitarios headless del dominio, del combate, de los enemigos, de los
-      sprites y de la integridad de scripts (110 pruebas).
+      sprites y de la integridad de scripts (111 pruebas).
 - [x] Tests de integración con física real: colisiones y sincronía
       dominio/vista (6 pruebas).
 - [x] Tests de integración de combate con la hitbox real (11 pruebas).

@@ -19,7 +19,7 @@ hechos.**
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 110/110 pruebas correctas
+# RESULTADO: 111/111 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
@@ -31,7 +31,7 @@ godot --headless --script res://tests/integration/npc_combat_runner.gd
 # RESULTADO: 18/18 pruebas correctas
 
 godot --headless --script res://tests/integration/startup_runner.gd
-# RESULTADO: 10/10 pruebas correctas
+# RESULTADO: 16/16 pruebas correctas
 ```
 
 Los enemigos están **desactivados** (`GameConfig.NPC_ENABLED = false`): el juego
@@ -190,6 +190,61 @@ durante el golpe. Caminando no se llamaba nunca, así que:
   caminar hacia abajo. Lo que faltaba era medir el rectángulo del sprite contra el del
   cuerpo, que es lo que hacen los tres casos de `startup_runner.gd` sobre el arma.
 
+### El "anclaje por el mango" que no anclaba, y el golpe que nunca terminaba
+
+Dos mosquitos reports ("camino y el player va dando vueltas" y "ataco y vuelve el bug
+anterior") que son uno solo debajo, más un tercero que salió al mirar.
+
+**El arma flotaba por encima de la cabeza.** El código ponía `centered = true` y
+`offset = (-w/2, -h)` para "anclar por el mango". Con `centered = true` el rectángulo
+que se dibuja es `posicion + offset - tamaño / 2`, así que ese offset deja el borde
+inferior del arma **media altura por encima del nodo**: el palo se veía flotando 13 px
+sobre la cabeza en las cuatro orientaciones, sin tocar el cuerpo. El comentario del
+código y el nombre del test decían "mango en la mano" y era verdad solo para la posición
+del nodo, que sí estaba bien. Medido con `Sprite2D.get_rect()` en un script aparte:
+`centered=true, offset.y=-16` da `y` de -24 a -8, y hace falta `centered=false` para
+que el borde inferior caiga en el nodo.
+
+**El golpe no terminaba nunca.** `MeleeCombat.advance()` emitía `attack_finished` solo
+si el jugador seguía en `ATTACKING` al cumplirse la recuperación. Pero
+`GameSession._sync_motion_state()` sincronizaba el estado en cada fotograma y ponía
+`MOVING` encima de `ATTACKING` en el fotograma siguiente al golpe, así que la condición
+era falsa siempre. Medido: tras una pulsación de espacio, `_swing` llegaba a 2.33 y no
+paraba, el clip se quedaba en `attack`, y al andar y girar se reiniciaba cinco veces
+por vuelta (el clip no se repite, así que `play()` lo arranca de cero). El jugador se
+movía de verdad por encima, con el cuerpo congelado en la pose de golpe.
+
+Los dos symptoms que el jugador describió ("da vueltas", "vuelve el bug anterior") eran
+el mismo reloj que no cerraba. La fila lateral especular no tenía nada que ver, por
+mucho que los píxeles parecieran contradecirse.
+
+**Reglas que salen de esto:**
+
+- **Una señal de fin de evento no puede depender del estado que otro sistema escribe cada
+  fotograma.** El reloj del evento es su autoridad. La transición de estado sí puede ser
+  condicional, porque ahí puede haberse metido otro sistema a mitad de evento.
+- **Cada estado tiene un dueño.** `IDLE`/`MOVING` son del movimiento y el movimiento no
+  toca nada más; `ATTACKING` del combate; `HURT` del daño; `DEAD` de la reaparición.
+  Un dueño que escribe su estado en cada fotograma es un dueño que no es dueño de nada.
+- **Un test que mira la posición del nodo no dice nada del dibujo.** Con `centered`
+  صحيح el nodo está en el sitio y el sprite flota. Lo que hay que medir es
+  `get_rect()` trasladado por la posición y la rotación, y el punto sobre el que gira el
+  arco (el centro del borde inferior del rectángulo local).
+- **Un clip que no se repite se queda clavado en su último fotograma.** Comparar con `<=`
+  cuenta cada fotograma repetido como un reinicio y hace fallar el caso siempre. Solo
+  retroceder es reiniciar.
+- **La defensa que tapa el fallo hace que el test no lo vea.** Con el reloj de la vista
+  arreglado, la suite daba verde aunque se revirtiera el arreglo del reloj del combate.
+  Por eso el caso de la señal es unitario, en `test_melee_combat.gd`: donde vive el
+  fallo. Y la segunda red (el auto-cierre de la vista) tiene su propio caso, que abre la
+  pose a mano para apartar el camino de la señal.
+- **Medir antes de arreglar, también para un test que escribe mal.** Los tres casos
+  nuevos fallaron dos veces por culpa del test: comparando el rectángulo antes de girar,
+  contando fotogramas repetidos como reinicios, y mirando el clip en un fotograma suelto
+  con el jugador contra una pared. Contra una pared el clip es `idle` porque no camina.
+  Los que dependan del movimiento tienen que mirar solo los fotogramas en los que la
+  posición cambia de verdad.
+
 ## Qué falta, en orden
 
 Es la lista de trabajo real. No inventar alcance extra: la especificación ya
@@ -265,7 +320,7 @@ depender de `GameConfig.NPC_ENABLED` ataría la suite a una bandera.
 ## Comandos
 
 ```bash
-# tests unitarios (110)
+# tests unitarios (111)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)
@@ -277,7 +332,7 @@ godot --headless --script res://tests/integration/combat_runner.gd
 # tests de integracion de NPC (18)
 godot --headless --script res://tests/integration/npc_combat_runner.gd
 
-# tests de integracion de arranque (10)
+# tests de integracion de arranque (16)
 godot --headless --script res://tests/integration/startup_runner.gd
 
 # captura un frame: <salida> [frames] [x] [y] [zoom]
@@ -340,6 +395,13 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
   `ACTOR_FRAME_SIZE` y, aparte, `FX_FRAME_WIDTH` / `FX_FRAME_HEIGHT` por eso.
 - **La orientación de las hojas laterales no se puede deducir.** Ver la nota del
   sprite lateral más arriba.
+- **`Sprite2D.centered` mueve el origen del rectángulo dibujado.** Con `centered = true`
+  (el valor por defecto) el rectángulo se dibuja en `posicion + offset - tamaño / 2`, no
+  en `posicion + offset`. Medido con `get_rect()`: para una textura de 3x16,
+  `centered = true` con `offset.y = -16` da el rectángulo de `y = -24` a `-8`, y
+  `centered = false` con el mismo offset lo da de `-16` a `0`. Media altura de diferencia,
+  que es justo lo que hace flotar un sprite "anclado por el mango". Para anclar por un
+  extremo del dibujo: `centered = false`. No razonar la fórmula, imprimir `get_rect()`.
 - **Resolución 384x216**: 16:9 exacto, escala de ventana x3, tile de 16 px. Ojo:
   216 **no** es múltiplo de 16. No escribir tests que asuman lo contrario.
 - **Zoom de cámara 3**: la imagen guardada por `screenshot.gd` es de 384x216, y

@@ -268,8 +268,17 @@ func advance(delta: float) -> void:
 
 	if _attack_remaining > 0.0:
 		_attack_remaining = maxf(0.0, _attack_remaining - delta)
-		if _attack_remaining <= 0.0 and player.state == PlayerState.Kind.ATTACKING:
-			player.transition_to(PlayerState.Kind.IDLE)
+		if _attack_remaining <= 0.0:
+			# El reloj es la autoridad de "el golpe ha terminado", y la señal sale
+			# siempre. Antes solo salía si el jugador seguía en `ATTACKING`, pero el
+			# movimiento lo sacaba de `ATTACKING` en el fotograma siguiente al golpe
+			# (`GameSession._sync_motion_state()`), así que la señal no salía nunca:
+			# la vista se quedaba en la pose de golpe para siempre y el jugador, ya de
+			# pie, caminaba con el cuerpo congelado en el arco y el arma torcida. La
+			# transición del estado sí es condicional, porque ahi puede haberse metido
+			# otro sistema (por ejemplo `HURT` al recibir daño a mitad de golpe).
+			if player.state == PlayerState.Kind.ATTACKING:
+				player.transition_to(PlayerState.Kind.IDLE)
 			attack_finished.emit()
 
 	if _invulnerable_remaining > 0.0:

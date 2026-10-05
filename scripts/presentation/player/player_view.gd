@@ -19,7 +19,6 @@ extends CharacterBody2D
 signal move_performed(moved: Vector2)
 signal facing_changed(facing: Vector2)
 
-const SPEED := 110.0
 const BODY_RADIUS := 5.0
 
 ## Distancia lateral a la que se dibuja el arma: al costado del cuerpo y nunca en su
@@ -48,7 +47,10 @@ const HAND_TILT := 0.32
 ## Amplitud del arco de golpe, en radianes a cada lado de la inclinación.
 const HAND_SWING := 1.1
 
-@export var move_speed: float = SPEED
+## Velocidad de caminar. Sale de `GameConfig` y no de un número aquí: antes la vista
+## traía la suya (110 px/s) y el presentador se la copiaba al `MovementController`, así
+## que `GameConfig.PLAYER_SPEED` no era el valor con el que se jugaba de verdad.
+@export var move_speed: float = GameConfig.PLAYER_SPEED
 @export var tint: Color = Color.WHITE
 
 var hitbox: HitboxSensor = null
@@ -68,6 +70,10 @@ var _weapon_sprite: Sprite2D = null
 var _actor: ActorSprite = null
 ## Golpe a puños o con arma: decide si la mano lleva algo.
 var _is_unarmed: bool = true
+## Si hay un arma con textura en la mano. Va aparte de `visible` porque la muerte
+## esconde el sprite sin que el jugador deje de llevar arma: al reaparecer hay que
+## volver a enseñarlo, y antes se quedaba invisible para el resto de la partida.
+var _is_armed: bool = false
 
 
 ## Vuelve a la vida tras morir. La vista no decide el punto de reaparición (eso es
@@ -166,6 +172,12 @@ func stop_hitbox() -> void:
 
 
 ## Cierra la pose de golpe y vuelve a lo que hubiera: caminar o quieto.
+##
+## Lo normal es que la llame el presentador al recibir `attack_finished`. Es pública
+## para que también se pueda cerrar a mano desde un test: `_physics_process()` la vuelve
+## a llamar al cumplirse la recuperación, así que el reloj de la vista es una segunda
+## red y este cierre manual no se nota en el juego. Lo que sí se nota es que sobre la
+## vista se puede comprobar el reloj sin el caso de uso.
 func end_attack() -> void:
 	_swing = -1.0
 	stop_hitbox()
@@ -184,7 +196,8 @@ func set_weapon(weapon: Weapon) -> void:
 		hitbox.set_reach(weapon.attack_range)
 	if _is_unarmed or weapon.texture_path.is_empty() or not ResourceLoader.exists(weapon.texture_path):
 		_weapon_texture = null
-		_ensure_weapon_sprite().visible = false
+		_is_armed = false
+		_refresh_weapon_visibility()
 		return
 	_weapon_texture = load(weapon.texture_path) as Texture2D
 	var sprite := _ensure_weapon_sprite()
@@ -195,8 +208,18 @@ func set_weapon(weapon: Weapon) -> void:
 	sprite.offset = Vector2(
 		-_weapon_texture.get_width() * 0.5, -_weapon_texture.get_height()
 	)
-	sprite.visible = true
+	_is_armed = true
+	_refresh_weapon_visibility()
 	_place_weapon()
+
+
+## El arma se dibuja cuando se lleva una y el jugador no está muerto.
+##
+## La muerte la esconde y `revive()` la vuelve a enseñar. Antes la muerte la apagaba
+## directamente en el sprite y nadie la volvía a encender, así que al reaparecer el
+## jugador se quedaba con las manos vacías aunque siguiera llevando la piedra.
+func _refresh_weapon_visibility() -> void:
+	_ensure_weapon_sprite().visible = _is_armed and not _is_dead
 
 
 ## Aturdimiento: parpadeo rojo para que el golpe se note.
@@ -217,7 +240,7 @@ func set_dead(active: bool) -> void:
 			stop_hitbox()
 		if _actor != null:
 			_actor.play(ActorSprite.DEAD, true)
-	_ensure_weapon_sprite().visible = false
+	_refresh_weapon_visibility()
 	_apply_tint()
 	_refresh_animation()
 
@@ -239,7 +262,13 @@ func _ensure_weapon_sprite() -> Sprite2D:
 		return _weapon_sprite
 	_weapon_sprite = Sprite2D.new()
 	_weapon_sprite.name = "Weapon"
-	_weapon_sprite.centered = true
+	# Sin `centered`: con `centered = true` el rectángulo que se dibuja es
+	# `posicion + offset - tamaño / 2`, así que un `offset.y = -altura` de "anclar por
+	# el mango" deja el borde inferior del arma media altura por encima de la mano y el
+	# palo aparece flotando por encima de la cabeza. Sin `centered` el rectángulo es
+	# `posicion + offset` y el nodo cae justo en el mango, que es lo que quiere el arco
+	# del golpe: que gire alrededor de la mano.
+	_weapon_sprite.centered = false
 	_weapon_sprite.z_index = 1
 	_weapon_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_weapon_sprite)
@@ -249,6 +278,12 @@ func _ensure_weapon_sprite() -> Sprite2D:
 func _physics_process(delta: float) -> void:
 	if _swing >= 0.0:
 		_swing += delta
+		if _swing >= GameConfig.ATTACK_RECOVERY:
+			# El caso de uso cierra el golpe con `attack_finished`, pero la vista no
+			# puede quedarse clavada en la pose si esa señal no llega: el arco tiene
+			# una duración conocida y aquí se cierra al cumplirse. Con las dos cosas el
+			# cuerpo vuelve a caminar pase lo que pase.
+			end_attack()
 	# El arma sigue a la mano en todos los fotogramas, no solo durante el golpe. Antes
 	# solo se colocaba al pasar a quieto, de modo que al caminar se quedaba clavada en
 	# el centro del cuerpo (tapando las piernas) y al soltar el botón saltaba de golpe
@@ -266,7 +301,12 @@ func _refresh_animation() -> void:
 		_actor.play(ActorSprite.DEAD)
 		return
 	if _swing >= 0.0:
-		_actor.play(ActorSprite.ATTACK)
+		# El clip del golpe lo arranca `begin_attack()` y aquí no se vuelve a pedir. El
+		# clip no se repite, así que al terminar `_playing` queda en falso y `play()`
+		# lo empezaría de cero: el golpe daba un tirón al final cada vez que el jugador
+		# giraba o pasaba un fotograma quieto.
+		if _actor.current_clip() != ActorSprite.ATTACK:
+			_actor.play(ActorSprite.ATTACK, true)
 		return
 	if _is_walking:
 		_actor.play(ActorSprite.WALK)
@@ -291,6 +331,17 @@ func _place_weapon() -> void:
 	if _swing >= 0.0:
 		arc = (_swing_ratio() * 2.0 - 1.0) * HAND_SWING
 	sprite.rotation = _facing.y * HAND_TILT + arc
+
+
+## Si el arco del golpe está en marcha. Lo consulta quien necesite saber si toca la pose
+## de golpe o la de caminar sin tener que mirar el reloj interno.
+func is_swinging() -> bool:
+	return _swing >= 0.0
+
+
+## Segundos que lleva el arco del golpe en marcha. Vale `-1` cuando no hay arco.
+func swing_elapsed() -> float:
+	return _swing
 
 
 ## Posición de la mano en el cuerpo, sin depender del estado del golpe. Lo consultan

@@ -27,8 +27,9 @@ mirar la pantalla es que a puños no se dibuja ni el arma ni el arco del golpe.
 
 ## 2. Movimiento
 
-- Velocidad: 110 px/s (`PlayerView.move_speed`, se inyecta en
-  `MovementController.move_speed`).
+- Velocidad: 110 px/s (`GameConfig.PLAYER_SPEED`, que `PlayerView.move_speed`
+  inyecta en `MovementController.move_speed`). La constante decía 60 y no era el valor
+  con el que se jugaba: la vista traía el suyo y ganaba al copiearlo.
 - Movimiento libre en 8 direcciones, con el eje dominante mandando.
 - El movimiento no se acelera ni se frena: es directo. El suavizado solo en la
   cámara, para que el jugador sienta el control inmediato.
@@ -57,6 +58,14 @@ nunca en su eje: la mano está a `HAND_REACH` a un lado y a la altura del pecho,
 hacia arriba o abajo solo se adelanta un poco (`HAND_VERTICAL_REACH`). El sprite se
 ancla por el mango, así que el nodo es la mano y el arco del golpe gira alrededor de
 ella en vez de despegar el arma de la mano a mitad de swing.
+
+Para que el nodo sea de verdad el mango el sprite va con `centered = false`. Con
+`centered = true` el rectángulo que se dibuja es `posicion + offset - tamaño / 2`, así
+que un `offset.y = -altura` pensado para anclar por el mango deja el borde inferior del
+arma **media altura por encima de la mano** y el palo se ve flotando por encima de la
+cabeza en las cuatro orientaciones. La comprobación es sobre el rectángulo dibujado y
+no sobre la posición del nodo: el nodo estaba bien colocado y lo que flotaba era el
+dibujo.
 
 Fuera del golpe el arma descansa recta, con una inclinación pequeña hacia donde mira
 el jugador (`HAND_TILT`), y el arco (`HAND_SWING`) solo suma mientras dura el swing.
@@ -127,6 +136,21 @@ DEAD -> (terminal; la reaparición la decide GameSession, no la máquina)
 tabla, se rechaza y se registra en el log. El combate usa ya `ATTACKING` (al
 golpear y mientras dura la recuperación) y `HURT` (al recibir daño).
 
+**Cada estado tiene un dueño, y solo uno.** El movimiento es dueño de `IDLE` y
+`MOVING` y no toca nada más; el combate abre y cierra `ATTACKING` con su propio
+reloj; el daño pone `HURT`; la reaparición pone `DEAD`. Antes el movimiento
+sincronizaba `IDLE`/`MOVING` en cada fotograma sin mirar qué había antes, así que
+ponía `MOVING` encima de `ATTACKING` en el fotograma siguiente al golpe: el estado
+duró un fotograma y, como `MeleeCombat` solo emitía `attack_finished` desde
+`ATTACKING`, la señal no salía nunca. El jugador se quedaba con el cuerpo congelado
+en la pose de golpe para siempre, y como andaba y giraba durante la recuperación el
+clip se reiniciaba en cada giro: de ahí el "va dando vueltas".
+
+De ahí la regla: **una señal de fin de evento no puede depender del estado que otro
+sistema escribe cada fotograma.** `MeleeCombat` emite cuando su reloj vence, y solo
+la transición de estado es condicional, porque ahí sí puede haberse metido otro
+sistema (por ejemplo `HURT` al recibir daño a mitad de golpe).
+
 ## 6. Estadísticas
 
 `CharacterStats` expone cinco valores, todos ajustables:
@@ -135,7 +159,7 @@ golpear y mientras dura la recuperación) y `HURT` (al recibir daño).
 | --- | --- |
 | `max_health` | 100 |
 | `max_stamina` | 100 |
-| `move_speed` | 60 (el jugador usa 110; la estadística queda reservada para los NPC) |
+| `move_speed` | 60 (el jugador usa `GameConfig.PLAYER_SPEED` = 110; la estadística queda reservada para los NPC) |
 | `base_damage` | 5 |
 | `defense` | 0 |
 

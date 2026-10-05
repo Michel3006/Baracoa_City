@@ -48,6 +48,12 @@ func _run() -> void:
 	await _check("al andar, el arma va en la mano y no se mueve al parar", _weapon_follows_the_hand)
 	await _check("el arma no tapa las piernas ni sale tumbada", _weapon_clears_the_legs)
 	await _check("al parar, el personaje sigue mirando hacia donde caminaba", _facing_kept_on_stop)
+	await _check("el golpe termina y el cuerpo vuelve a su animación", _attack_ends_and_body_walks_again)
+	await _check("tras golpear, caminar no repite el golpe ni da vueltas", _walk_after_attack_does_not_replay_the_swing)
+	await _check("girar a mitad de golpe no reinicia el clip", _turning_mid_swing_does_not_restart_the_clip)
+	await _check("la pose de golpe se cierra sola aunque nadie avise", _swing_closes_without_the_signal)
+	await _check("el estado ATTACKING dura la recuperación", _attacking_state_lasts_the_recovery)
+	await _check("al reaparecer el jugador sigue llevando el arma", _weapon_survives_death)
 	await _check("con la zona despejada nada se ata al jugador", _nothing_blocks_the_player)
 
 	_report()
@@ -338,12 +344,17 @@ func _weapon_follows_the_hand() -> void:
 		)
 
 
-## El arma se dibuja al costado del cuerpo y recta, no atravesada.
+## El arma se dibuja al costado del cuerpo, recta, y con el mango en la mano.
 ##
-## La mano iba en la dirección en la que se mira, así que al mirar hacia abajo caía
-## sobre el eje del cuerpo y el palo tapaba las piernas; y la inclinación salía del
-## ángulo de la mirada, que tumba el palo en horizontal al mirar al frente o de espaldas
-## y lo cruza por encima de la cabeza. Aquí se mide el rectángulo que ocupa el sprite.
+## Aquí se mide el rectángulo que ocupa de verdad el sprite, no la posición del nodo.
+## La diferencia importa: con `centered = true` el rectángulo se dibuja en
+## `posicion + offset - tamaño / 2`, así que un offset pensado para anclar por el mango
+## dejaba el palo media altura por encima de la mano, flotando sobre la cabeza. El test
+## anterior miraba solo `hand_position()` y daba ese caso por bueno, porque la posición
+## del nodo era la correcta y lo que flotaba era el dibujo.
+##
+## Lo que falla cuando esto se rompe no es ningún valor que devuelva el código: es lo que
+## hay en pantalla. Por eso el caso compone el rectángulo y lo compara con el del cuerpo.
 func _weapon_clears_the_legs() -> void:
 	var player := _player_or_report()
 	if player == null:
@@ -354,30 +365,90 @@ func _weapon_clears_the_legs() -> void:
 		"el jugador no está dibujando ningún arma"
 	):
 		return
-	var half := float(weapon.texture.get_width()) * 0.5
+	var frame := float(GameConfig.ACTOR_FRAME_SIZE)
+	# El cuerpo: el actor va centrado con `ACTOR_SPRITE_OFFSET`, así que ocupa desde
+	# -8,-16 hasta +8,0 respecto al nodo del jugador.
+	var body := Rect2(-frame * 0.5, -frame, frame, frame)
 	for direction: Vector2 in DIRECTIONS:
-		var hand: Vector2 = player.hand_position(direction)
-		_context.check(
-			hand.x - half > 0.0 or hand.x + half < 0.0,
-			"el arma mirando a %s se dibuja sobre el eje del cuerpo (x = %.1f, ancho %.1f)" % [
-				direction, hand.x, half * 2.0
-			]
-		)
-		# Anclaje por el mango: el nodo es la mano, así que el borde inferior del dibujo
-		# está en la mano y nunca por debajo de los pies.
-		_context.check(
-			hand.y < 0.0,
-			"el arma mirando a %s llega al suelo o más abajo (%.1f)" % [direction, hand.y]
-		)
+		# Primero se gira y se espera: el sprite tiene que estar en la orientación que se
+		# va a medir. Midiendo antes de girar se comparaba el dibujo de una dirección con
+		# la mano de otra, y el caso pasaba o fallaba por lo que tocara.
 		var action := _action_for(direction)
 		Input.action_press(action, 1.0)
 		await _settle(6)
 		Input.action_release(action)
 		await _settle(6)
+
+		var hand: Vector2 = player.hand_position()
+		var rect: Rect2 = _weapon_rect_on_body(weapon)
+		var grip: Vector2 = _weapon_grip_on_body(weapon)
+		# El mango está en la mano. Se mide el punto del dibujo sobre el que gira el arco
+		# (el centro del borde inferior del rectángulo local), no el nodo: con
+		# `centered = true` el nodo está bien y el mango queda media altura por encima.
+		_context.check(
+			grip.distance_to(hand) <= 0.51,
+			"mirando a %s el mango del arma no está en la mano (mango %s, mano %s)" % [
+				direction, str(grip), str(hand)
+			]
+		)
+		# El arma toca el cuerpo, que es lo que significa "en la mano": un dibujo
+		# colocado en el sitio correcto pero que no solapa al personaje se ve flotando al
+		# lado, y es justo lo que pasaba con el offset mal calculado.
+		_context.check(
+			rect.intersects(body),
+			"mirando a %s el arma no toca el cuerpo (arma %s, cuerpo %s)" % [
+				direction, str(rect), str(body)
+			]
+		)
+		# Y no se clava en el suelo: los pies están en el origen del nodo del jugador.
+		_context.check(
+			rect.end.y <= 0.0,
+			"mirando a %s el arma baja de los pies (%.1f)" % [direction, rect.end.y]
+		)
 		_context.check(
 			absi(weapon.rotation) < PI * 0.25,
 			"mirando a %s el arma sale tumbada (%.2f rad)" % [direction, weapon.rotation]
 		)
+
+
+## Rectángulo que el arma ocupa en el sistema de coordenadas del cuerpo del jugador.
+##
+## Traduce el rectángulo local del sprite por la posición de la mano y por la rotación
+## del arco, que es como lo ve el jugador. Al ser el rectángulo un AABB y no una figura
+## girada, con el arma inclinada sale algo mayor que el dibujo real; para la geometría
+## fina está `_weapon_grip_on_body()`.
+func _weapon_rect_on_body(weapon: Sprite2D) -> Rect2:
+	var base: Rect2 = weapon.get_rect()
+	var left: float = INF
+	var right: float = -INF
+	var top: float = INF
+	var bottom: float = -INF
+	for point: Vector2 in [
+		base.position,
+		Vector2(base.end.x, base.position.y),
+		base.end,
+		Vector2(base.position.x, base.end.y),
+	]:
+		var corner: Vector2 = weapon.position + point.rotated(weapon.rotation)
+		left = minf(left, corner.x)
+		right = maxf(right, corner.x)
+		top = minf(top, corner.y)
+		bottom = maxf(bottom, corner.y)
+	return Rect2(left, top, right - left, bottom - top)
+
+
+## Punto del dibujo del arma sobre el que gira el arco del golpe, en coordenadas del
+## cuerpo del jugador.
+##
+## Es el centro del borde inferior del rectángulo local, llevados por la posición y la
+## rotación del sprite. Con `centered = false` y `offset = (-ancho / 2, -alto)` ese punto
+## cae en el nodo; con `centered = true` queda `-alto / 2` por encima, que es exactamente
+## el medio cuadro de error del que hablaba el arreglo. Medir este punto y no el nodo es
+## lo que distingue "la mano está bien" de "la mano está bien y el palo también".
+func _weapon_grip_on_body(weapon: Sprite2D) -> Vector2:
+	var base: Rect2 = weapon.get_rect()
+	var bottom_middle := Vector2(base.position.x + base.size.x * 0.5, base.end.y)
+	return weapon.position + bottom_middle.rotated(weapon.rotation)
 
 
 ## Al soltar el botón el personaje se queda mirando hacia donde iba, no vuelve a mirar
@@ -421,6 +492,347 @@ func _facing_kept_on_stop() -> void:
 			actor.facing() == direction,
 			"parado tras ir a %s el sprite mira a %s" % [direction, str(actor.facing())]
 		)
+
+
+## Un golpe se acaba y el cuerpo vuelve a su animación de siempre.
+##
+## Este caso es la defensa del fallo más caro que ha tenido el movimiento. La señal
+## `attack_finished` solo salía si el jugador seguía en `ATTACKING` al vencer la
+## recuperación, pero el movimiento lo sacaba de `ATTACKING` en el fotograma siguiente
+## al golpe, así que la señal no salía nunca: la vista se quedaba con la pose de golpe
+## para siempre y el arma se quedaba con la inclinación del arco. El jugador seguía
+## moviéndose de verdad, pero con el cuerpo congelado y el arma torcida.
+##
+## Las tres cosas que se miran son las tres que se rompieron: el clip, el reloj de la
+## vista y la animación que toca después.
+func _attack_ends_and_body_walks_again() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
+		return
+
+	Input.action_press(&"attack", 1.0)
+	await _settle(2)
+	Input.action_release(&"attack")
+	# La recuperación es `ATTACK_RECOVERY`; se le da margen para que el cierre no dependa
+	# de caer justo en el fotograma exacto.
+	await _settle(int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 12)
+
+	_context.check(
+		not player.is_swinging(),
+		"el reloj del golpe sigue corriendo %.2f s después de que el golpe acabara" % player.swing_elapsed()
+	)
+	_context.check(
+		actor.current_clip() != ActorSprite.ATTACK,
+		"terminado el golpe el clip sigue siendo %s" % str(actor.current_clip())
+	)
+
+	# Y al volver a andar tiene que salir la caminata, no quedarse en la última pose.
+	#
+	# Se mide el clip en los fotogramas en los que el jugador se está moviendo de verdad,
+	# y no en un instante suelto: los casos anteriores dejan al jugador en el borde del
+	# mapa, y contra una pared el clip es `idle` porque no camina, no porque la animación
+	# siga clavada en el golpe. Un caso que mirara solo el fotograma final daría un fallo
+	# falso, o peor, un verde falso si el jugador llegara a tener pared delante.
+	var start: Vector2 = player.global_position
+	var clips_moving: Dictionary = {}
+	var moved: float = 0.0
+	Input.action_press(&"move_right", 1.0)
+	for _frame: int in range(40):
+		await physics_frame
+		var advance: float = player.global_position.x - start.x
+		if advance <= 0.5:
+			continue
+		moved = advance
+		clips_moving[str(actor.current_clip())] = int(clips_moving.get(str(actor.current_clip()), 0)) + 1
+	Input.action_release(&"move_right")
+	await _settle(4)
+
+	_context.check(
+		moved > 0.0,
+		"después del golpe el jugador no se mueve a la derecha (%s): o el golpe le ha dejado clavado o tiene pared delante" % str(player.global_position)
+	)
+	if moved > 0.0:
+		_context.check(
+			not clips_moving.has(str(ActorSprite.ATTACK)),
+			"después del golpe, al andar, sale el clip de golpe %d fotogramas de %d" % [
+				int(clips_moving.get(str(ActorSprite.ATTACK), 0)), clips_moving.size()
+			]
+		)
+		_context.check(
+			clips_moving.has(str(ActorSprite.WALK)),
+			"después del golpe, al andar, nunca sale la caminata: solo %s" % str(clips_moving.keys())
+		)
+
+
+## Tras golpear, caminar da vueltas: no es que el jugador gire, es que el clip del golpe
+## se quedaba puesto y se repetía en cada giro, y encima el cuerpo se espejaba al mirar
+## a la izquierda porque la fila del golpe no es direccional.
+##
+## Aquí se cuentan las repeticiones y las filas vistas, en vez de mirar un fotograma
+## suelto: es la única forma de detectar que una animación se reproduce en bucle cuando
+## el daño es "da vueltas", no "se ve raro".
+func _walk_after_attack_does_not_replay_the_swing() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
+		return
+
+	Input.action_press(&"attack", 1.0)
+	await _settle(2)
+	Input.action_release(&"attack")
+	await _settle(int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 12)
+
+	# Una vuelta completa andando, girando en las cuatro direcciones.
+	var attack_frames: int = 0
+	var walk_rows: Dictionary = {}
+	var clips: Dictionary = {}
+	var previous_attack_frame: int = -1
+	for direction: Vector2 in DIRECTIONS:
+		var action := _action_for(direction)
+		Input.action_press(action, 1.0)
+		for _frame: int in range(24):
+			await physics_frame
+			var clip := str(actor.current_clip())
+			clips[clip] = int(clips.get(clip, 0)) + 1
+			if clip == ActorSprite.ATTACK:
+				attack_frames += 1
+				# El clip del golpe no se repite, así que su fotograma solo avanza.
+				if previous_attack_frame >= 0 and actor.frame <= previous_attack_frame:
+					attack_frames += 1000
+				previous_attack_frame = actor.frame
+			elif clip == ActorSprite.WALK:
+				previous_attack_frame = -1
+				walk_rows[actor.frame / maxi(1, actor.hframes)] = true
+		Input.action_release(action)
+		await _settle(4)
+
+	_context.check(
+		attack_frames == 0,
+		"andando tras golpear se han visto %d fotogramas del clip de golpe, y debería ser 0: %s" % [
+			attack_frames, str(clips)
+		]
+	)
+	_context.check(
+		walk_rows.size() == DIRECTIONS.size(),
+		"andando en circulo tras golpear solo se han visto %d filas de las %d que tocan: %s" % [
+			walk_rows.size(), DIRECTIONS.size(), str(walk_rows.keys())
+		]
+	)
+
+
+## Un giro a mitad de golpe no reinicia el clip del golpe.
+##
+## El clip de golpe no se repite, así que cuando se termina `ActorSprite.play()` lo
+## vuelve a arrancar desde el primer fotograma. La vista pedía el clip de golpe cada vez
+## que cambiaba el estado o la orientación, así que en cuanto el jugador andaba y giraba
+## durante la recuperación el golpe volvía a empezar: eso es lo que se veía como "va
+## dando vueltas". El cuerpo sale por la otra punta y el jugador no paraba de girar.
+##
+## Aquí se mide que el fotograma del golpe solo avance, y que además el arma barra en el
+## mismo sentido durante todo el arco: si el clip se reiniciase, el fotograma retrocedería.
+func _turning_mid_swing_does_not_restart_the_clip() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
+		return
+	var weapon: Sprite2D = player.get_node_or_null("Weapon") as Sprite2D
+	if not _context.check(weapon != null, "el jugador no tiene nodo de arma"):
+		return
+
+	# Andando y golpeando a la vez: es el caso en el que los dos sistemas se pelean por
+	# el estado y en el que el giro llega a mitad de arco.
+	Input.action_press(&"move_right", 1.0)
+	await _settle(8)
+	Input.action_press(&"attack", 1.0)
+	await _settle(2)
+	Input.action_release(&"attack")
+	Input.action_release(&"move_right")
+
+	var total: int = int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 4
+	# El giro entra a mitad del arco y no antes. Si el cambio de orientacion llega antes
+	# de que empiece el golpe, el reinicio cae en el primer fotograma y el caso no mide
+	# nada: el fallo solo aparece cuando el giro pisa al clip cuando ya va por la mitad.
+	var turn_at: int = maxi(1, total / 3)
+	var previous: int = -1
+	var restarts: int = 0
+	var arcs: Array[float] = []
+	for _frame: int in range(total):
+		if _frame == turn_at:
+			Input.action_press(&"move_up", 1.0)
+		await physics_frame
+		if actor.current_clip() != ActorSprite.ATTACK:
+			continue
+		# Solo retroceder es reiniciar. Un clip que no se repite se queda clavado en su
+		# ultimo fotograma (`ActorSprite._process()`), asi que dos fotogramas seguidos
+		# iguales son lo normal y contarlos como reinicio haria fallar el caso siempre.
+		if previous >= 0 and actor.frame < previous:
+			restarts += 1
+		previous = actor.frame
+		arcs.append(weapon.rotation)
+	Input.action_release(&"move_up")
+	await _settle(4)
+
+	_context.check(
+		restarts == 0,
+		"girando a mitad de golpe el clip se ha reiniciado %d veces" % restarts
+	)
+	_context.check(
+		arcs.size() >= 3,
+		"el golpe no ha dado ni 3 fotogramas de arco (%d), el caso no está midiendo nada" % arcs.size()
+	)
+	# El arco va de menos a más y de más a menos una sola vez. Con el clip reiniciado el
+	# ángulo de la punta saltaba de un extremo al otro, y eso es lo que se ve como un
+	# tirón al girar.
+	var jumps: int = 0
+	for i: int in range(1, arcs.size()):
+		if absf(arcs[i] - arcs[i - 1]) > GameConfig.ATTACK_RECOVERY * 6.0:
+			jumps += 1
+	_context.check(
+		jumps == 0,
+		"el arco del arma da %d saltos entre fotogramas: el clip se está reiniciando (ángulos %s)" % [
+			jumps, str(arcs)
+		]
+	)
+
+
+## La pose de golpe se cierra sola aunque nadie avise.
+##
+## El camino normal es `attack_finished` -> `end_attack()`, y con el reloj de
+## `MeleeCombat` arreglado esa señal sale siempre. Por eso este caso la aparta a
+## propósito: abre la pose a mano, sin caso de uso detrás, y mira si la vista la cierra.
+##
+## Es la segunda red, y merece su propio caso: si la señal se pierde un día (un sistema
+## nuevo que se coma el estado, un `advance()` que no llega a correr), lo que no puede
+## pasar es que el jugador se quede con el brazo en el aire para siempre. El arco tiene
+## una duración conocida, así que la vista puede cerrarlo ella misma.
+func _swing_closes_without_the_signal() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
+		return
+
+	# Sin pulsar `attack`: se abre la pose directamente, que es lo mismo que el
+	# presentador haria con la señal perdida por el camino.
+	player.begin_attack()
+	await _settle(2)
+	if not _context.check(
+		player.is_swinging(), "no se ha abierto la pose de golpe, el caso no mide nada"
+	):
+		return
+
+	Input.action_press(&"move_right", 1.0)
+	await _settle(int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 6)
+
+	# El clip se mide solo en los fotogramas en los que el jugador se mueve de verdad.
+	# Los casos anteriores lo dejan contra el borde del mapa, y contra una pared el clip
+	# es `idle` porque no camina, no porque la pose siga abierta.
+	var start: Vector2 = player.global_position
+	var clips_moving: Dictionary = {}
+	for _frame: int in range(24):
+		await physics_frame
+		if player.global_position.x - start.x > 1.0:
+			clips_moving[str(actor.current_clip())] = 1
+	Input.action_release(&"move_right")
+	await _settle(2)
+
+	_context.check(
+		not player.is_swinging(),
+		"sin que nadie llame a end_attack() la pose sigue abierta %.2f s después" % player.swing_elapsed()
+	)
+	_context.check(
+		actor.current_clip() != ActorSprite.ATTACK,
+		"sin señal, el clip se queda en %s" % str(actor.current_clip())
+	)
+	if not clips_moving.is_empty():
+		_context.check(
+			clips_moving.has(str(ActorSprite.WALK)),
+			"cerrada la pose a mano y andando, el clip es %s" % str(clips_moving.keys())
+		)
+
+
+## El estado `ATTACKING` dura la recuperación y no un solo fotograma.
+##
+## Es el bug de raíz del anterior, visto desde el dominio: el movimiento sincronizaba el
+## estado en cada fotograma y ponía `IDLE` o `MOVING` encima de `ATTACKING` antes de que
+## la recuperación se cumpliera. El estado `ATTACKING` era entonces decorativo, y como
+## `MeleeCombat` emissionsaba `attack_finished` solo desde `ATTACKING`, el golpe no
+## terminaba nunca.
+func _attacking_state_lasts_the_recovery() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var combat: MeleeCombat = _game().session.combat
+	if not _context.check(combat != null, "la sesión no tiene combate"):
+		return
+
+	Input.action_press(&"move_right", 1.0)
+	await _settle(8)
+	Input.action_press(&"attack", 1.0)
+	await _settle(2)
+	Input.action_release(&"attack")
+
+	var frames: int = maxi(2, int(GameConfig.ATTACK_RECOVERY * 60.0) - 2)
+	var attacking_frames: int = 0
+	for _frame: int in range(frames):
+		await physics_frame
+		if combat.player.state == PlayerState.Kind.ATTACKING:
+			attacking_frames += 1
+	Input.action_release(&"move_right")
+	await _settle(6)
+
+	_context.check(
+		attacking_frames >= frames,
+		"andando y golpeando, el estado ATTACKING solo duró %d de %d fotogramas" % [
+			attacking_frames, frames
+		]
+	)
+	_context.check(
+		combat.player.state == PlayerState.Kind.IDLE,
+		"pasada la recuperación el estado sigue siendo %s en vez de IDLE" % (
+			PlayerState.name_of(combat.player.state)
+		)
+	)
+
+
+## Al morir y reaparecer el jugador sigue llevando su arma en la mano.
+##
+## La muerte apagaba el sprite del arma y nadie lo volvía a encender, así que al
+## reaparecer el jugador se quedaba con las manos vacías aunque `WeaponCatalog` dijera
+## que llevaba la piedra. Es otro caso de "el código dice una cosa y la pantalla otra".
+func _weapon_survives_death() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var weapon: Sprite2D = player.get_node_or_null("Weapon") as Sprite2D
+	if not _context.check(weapon != null, "el jugador no tiene nodo de arma"):
+		return
+	if not _context.check(weapon.visible, "antes de morir el jugador ya va sin arma"):
+		return
+
+	player.set_dead(true)
+	await _settle(2)
+	_context.check(not weapon.visible, "muerto, el arma debería estar escondida")
+	player.revive()
+	await _settle(2)
+	_context.check(
+		weapon.visible,
+		"reaparecido, el arma sigue escondida: el jugador vuelve con las manos vacías"
+	)
+	_context.check(
+		weapon.position.is_equal_approx(player.hand_position()),
+		"reaparecido, el arma no está colocada en la mano (%s, mano %s)" % [
+			str(weapon.position), str(player.hand_position())
+		]
+	)
 
 
 ## El jugador se puede recorrer sin que nada se lo impida.
