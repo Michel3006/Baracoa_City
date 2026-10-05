@@ -31,7 +31,7 @@ godot --headless --script res://tests/integration/npc_combat_runner.gd
 # RESULTADO: 18/18 pruebas correctas
 
 godot --headless --script res://tests/integration/startup_runner.gd
-# RESULTADO: 7/7 pruebas correctas
+# RESULTADO: 10/10 pruebas correctas
 ```
 
 Los enemigos están **desactivados** (`GameConfig.NPC_ENABLED = false`): el juego
@@ -158,6 +158,38 @@ diciendo "hay 2 copias de MainWorldView".
 - **`z_index` delata lo que está debajo.** Un sprite que se ve y el cuerpo que no, con
   el `z_index` del sprite por encima del terreno, es la firma de un nodo tapado por otro.
 
+## El arma se quedaba clavada en el centro del cuerpo
+
+Que "no se ve como camina, no se mueven los pies" y "al parar se pone de lado". Las dos
+cosas eran el mismo fallo, y no estaba ni en el ciclo de caminar ni en la orientación:
+el código de la caminata ya estaba bien (medido: cuatro fotogramas por fila, y al parar
+el fotograma es la columna 0 de la fila de la orientación, o sea que el personaje sí se
+quedaba mirando donde iba).
+
+El culpable era `PlayerView._place_weapon()`, que se llamaba **solo al pasar a quieto** y
+durante el golpe. Caminando no se llamaba nunca, así que:
+
+1. Al arrancar, el sprite del arma se quedaba en el origen del nodo. El origen del
+   cuerpo está en los pies, así que eso es el centro del personaje: un palo de 3x16 px
+   dibujado encima, con `z_index = 1`. Los pies no se veían porque había un palo encima.
+2. Al cambiar de orientación **sin parar**, el arma se quedaba en la mano de la
+   dirección anterior durante toda la vuelta.
+3. Al parar se colocaba de golpe, y como la inclinación salía de `_facing.angle()` el
+   palo se tumbaba en horizontal y saltaba de sitio. De ahí el "se pone lateral": era el
+   arma, no el personaje.
+
+**Reglas que salen de esto:**
+
+- **Lo que se dibuja en un estado hay que colocarlo en todos, no solo en ese estado.**
+  Si la colocación va atada a una transición (`if not moving`), el resto del tiempo el
+  sprite se queda en el último sitio conocido, que es el origen del nodo la primera vez.
+- **Un sprite no se ancla por su centro si representa una mano.** Anclado por el mango,
+  el nodo es la mano y el arco del golpe gira alrededor de ella.
+- **La geometría hay que mirarla, no razonada.** Aquí se razonó que "la mano va donde
+  mira el personaje" y sonó bien, y el resultado fue el arma encima de las piernas al
+  caminar hacia abajo. Lo que faltaba era medir el rectángulo del sprite contra el del
+  cuerpo, que es lo que hacen los tres casos de `startup_runner.gd` sobre el arma.
+
 ## Qué falta, en orden
 
 Es la lista de trabajo real. No inventar alcance extra: la especificación ya
@@ -245,7 +277,7 @@ godot --headless --script res://tests/integration/combat_runner.gd
 # tests de integracion de NPC (18)
 godot --headless --script res://tests/integration/npc_combat_runner.gd
 
-# tests de integracion de arranque (7)
+# tests de integracion de arranque (10)
 godot --headless --script res://tests/integration/startup_runner.gd
 
 # captura un frame: <salida> [frames] [x] [y] [zoom]

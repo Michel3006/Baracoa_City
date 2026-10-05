@@ -45,6 +45,9 @@ func _run() -> void:
 	await _check("el jugador de pantalla está conectado a los casos de uso", _player_wired)
 	await _check("la cámara activa sigue al jugador de los casos de uso", _camera_follows_player)
 	await _check("pulsar una tecla mueve al jugador que se ve", _player_moves_on_input)
+	await _check("al andar, el arma va en la mano y no se mueve al parar", _weapon_follows_the_hand)
+	await _check("el arma no tapa las piernas ni sale tumbada", _weapon_clears_the_legs)
+	await _check("al parar, el personaje sigue mirando hacia donde caminaba", _facing_kept_on_stop)
 	await _check("con la zona despejada nada se ata al jugador", _nothing_blocks_the_player)
 
 	_report()
@@ -235,6 +238,189 @@ func _player_moves_on_input() -> void:
 			str(domain.position), str(player.global_position)
 		]
 	)
+
+
+## Las cuatro orientaciones, para recorrerlas en el orden en el que se comprueban.
+const DIRECTIONS: Array[Vector2] = [Vector2.RIGHT, Vector2.UP, Vector2.LEFT, Vector2.DOWN]
+
+## Un caso que necesita el jugador de pantalla. Devuelve `null` si no lo hay, y el
+## propio `check` deja escrito el motivo.
+func _player_or_report() -> PlayerView:
+	var players := _players()
+	if not _context.check(
+		players.size() == 1, "no se puede mirar al jugador: hay %d" % players.size()
+	):
+		return null
+	return players[0]
+
+
+func _action_for(direction: Vector2) -> StringName:
+	if direction == Vector2.UP:
+		return &"move_up"
+	if direction == Vector2.DOWN:
+		return &"move_down"
+	return &"move_right" if direction == Vector2.RIGHT else &"move_left"
+
+
+## El arma tiene que estar en la mano mientras se camina, y quedarse quieta al parar.
+##
+## El arma solo se colocaba al pasar a quieto y durante el golpe. Con eso al caminar se
+## quedaba donde se hubiera dejado la última vez, que al arrancar es el centro del
+## cuerpo: un palo de 16 px encima de las piernas. Y al soltar el botón saltaba de golpe a
+## la posición y a la inclinación nuevas, que es lo que se veía como que el personaje se
+## volvía de lado al parar.
+func _weapon_follows_the_hand() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var weapon: Sprite2D = player.get_node_or_null("Weapon") as Sprite2D
+	if not _context.check(
+		weapon != null and weapon.visible, "el jugador no está dibujando ningún arma"
+	):
+		return
+
+	# Armar el caso de salida: el arma visible pero sin colocar en ninguna mano, que es
+	# como aparece. Se reproduce a propósito en vez de esperar al arranque, porque aquí el
+	# jugador ya se ha movido antes.
+	weapon.position = Vector2.ZERO
+	player.set_weapon(WeaponCatalog.default_weapon())
+	_context.check(
+		weapon.position.distance_to(player.hand_position()) < 0.01,
+		"al equipar el arma no se coloca en la mano: está en %s y la mano en %s" % [
+			str(weapon.position), str(player.hand_position())
+		]
+	)
+
+	# Girar sin soltar el botón. Antes el cambio de orientación no recolocaba el arma,
+	# porque la recolocación iba atada al paso a quieto: seguía en la mano de la
+	# dirección anterior durante toda la vuelta.
+	Input.action_press(&"move_right", 1.0)
+	await _settle(6)
+	Input.action_press(&"move_up", 1.0)
+	await _settle(6)
+	_context.check(
+		weapon.position.distance_to(player.hand_position(Vector2.UP)) < 0.01,
+		"girando de derecha a arriba sin parar, el arma se queda en %s y la mano está en %s" % [
+			str(weapon.position), str(player.hand_position(Vector2.UP))
+		]
+	)
+	Input.action_release(&"move_up")
+	await _settle(6)
+	_context.check(
+		weapon.position.distance_to(player.hand_position(Vector2.RIGHT)) < 0.01,
+		"al volver a derecha el arma se queda en %s y la mano está en %s" % [
+			str(weapon.position), str(player.hand_position(Vector2.RIGHT))
+		]
+	)
+	Input.action_release(&"move_right")
+	await _settle(4)
+
+	# Y en cada dirección, caminando y parado, la posición no se mueve.
+	for direction: Vector2 in DIRECTIONS:
+		var action := _action_for(direction)
+		Input.action_press(action, 1.0)
+		await _settle(6)
+		var walking: Vector2 = weapon.position
+		Input.action_release(action)
+		await _settle(6)
+		var hand: Vector2 = player.hand_position(direction)
+		_context.check(
+			walking.distance_to(hand) < 0.01,
+			"caminando hacia %s el arma está en %s y la mano en %s" % [
+				direction, str(walking), str(hand)
+			]
+		)
+		_context.check(
+			weapon.position.distance_to(walking) < 0.01,
+			"al parar yendo hacia %s el arma salta de %s a %s" % [
+				direction, str(walking), str(weapon.position)
+			]
+		)
+
+
+## El arma se dibuja al costado del cuerpo y recta, no atravesada.
+##
+## La mano iba en la dirección en la que se mira, así que al mirar hacia abajo caía
+## sobre el eje del cuerpo y el palo tapaba las piernas; y la inclinación salía del
+## ángulo de la mirada, que tumba el palo en horizontal al mirar al frente o de espaldas
+## y lo cruza por encima de la cabeza. Aquí se mide el rectángulo que ocupa el sprite.
+func _weapon_clears_the_legs() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var weapon: Sprite2D = player.get_node_or_null("Weapon") as Sprite2D
+	if not _context.check(
+		weapon != null and weapon.visible and weapon.texture != null,
+		"el jugador no está dibujando ningún arma"
+	):
+		return
+	var half := float(weapon.texture.get_width()) * 0.5
+	for direction: Vector2 in DIRECTIONS:
+		var hand: Vector2 = player.hand_position(direction)
+		_context.check(
+			hand.x - half > 0.0 or hand.x + half < 0.0,
+			"el arma mirando a %s se dibuja sobre el eje del cuerpo (x = %.1f, ancho %.1f)" % [
+				direction, hand.x, half * 2.0
+			]
+		)
+		# Anclaje por el mango: el nodo es la mano, así que el borde inferior del dibujo
+		# está en la mano y nunca por debajo de los pies.
+		_context.check(
+			hand.y < 0.0,
+			"el arma mirando a %s llega al suelo o más abajo (%.1f)" % [direction, hand.y]
+		)
+		var action := _action_for(direction)
+		Input.action_press(action, 1.0)
+		await _settle(6)
+		Input.action_release(action)
+		await _settle(6)
+		_context.check(
+			absi(weapon.rotation) < PI * 0.25,
+			"mirando a %s el arma sale tumbada (%.2f rad)" % [direction, weapon.rotation]
+		)
+
+
+## Al soltar el botón el personaje se queda mirando hacia donde iba, no vuelve a mirar
+## al frente ni se vuelve de lado.
+##
+## El fotograma parado es la primera columna de la fila de la orientación, así que aquí
+## se comprueba que sea la columna 0 de la fila que toca y no otra: un clip de caminar
+## cuya fila se calculase mal se notaría justo al parar, que es cuando se ve la pose
+## quieta.
+func _facing_kept_on_stop() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
+		return
+	var rows: Array[int] = [
+		GameConfig.ACTOR_ROW_SIDE_MIRRORED,
+		GameConfig.ACTOR_ROW_UP,
+		GameConfig.ACTOR_ROW_SIDE,
+		GameConfig.ACTOR_ROW_DOWN,
+	]
+	for index: int in range(DIRECTIONS.size()):
+		var direction: Vector2 = DIRECTIONS[index]
+		Input.action_press(_action_for(direction), 1.0)
+		await _settle(20)
+		Input.action_release(_action_for(direction))
+		await _settle(8)
+		var expected: int = rows[index] * maxi(1, actor.hframes)
+		_context.check(
+			actor.current_clip() == ActorSprite.IDLE,
+			"parado tras ir a %s el clip es %s, no idle" % [direction, str(actor.current_clip())]
+		)
+		_context.check(
+			actor.frame == expected,
+			"parado tras ir a %s se ve el fotograma %d, y el de esa fila quieto es el %d" % [
+				direction, actor.frame, expected
+			]
+		)
+		_context.check(
+			actor.facing() == direction,
+			"parado tras ir a %s el sprite mira a %s" % [direction, str(actor.facing())]
+		)
 
 
 ## El jugador se puede recorrer sin que nada se lo impida.

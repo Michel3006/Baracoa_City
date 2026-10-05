@@ -50,6 +50,23 @@ que explica también el caso de las dos filas laterales especulares.
 presentador cuando `MeleeCombat` avisa de un aturdimiento, así que el jugador no
 puede moverse mientras está HURT.
 
+### El arma en la mano
+
+El arma equipada es un sprite hijo del jugador que va **al costado del cuerpo**,
+nunca en su eje: la mano está a `HAND_REACH` a un lado y a la altura del pecho, y
+hacia arriba o abajo solo se adelanta un poco (`HAND_VERTICAL_REACH`). El sprite se
+ancla por el mango, así que el nodo es la mano y el arco del golpe gira alrededor de
+ella en vez de despegar el arma de la mano a mitad de swing.
+
+Fuera del golpe el arma descansa recta, con una inclinación pequeña hacia donde mira
+el jugador (`HAND_TILT`), y el arco (`HAND_SWING`) solo suma mientras dura el swing.
+Se coloca en **todos** los fotogramas, no solo al parar: si se coloca solo en un
+estado, mientras se camina se queda donde se dejó la última vez, y al parar salta de
+golpe a la posición y a la inclinación nuevas.
+
+Las dos cosas son medidas, no supuestas: el arma del pack es un palo de 3x16 px, y
+centrado en el eje del cuerpo tapaba las piernas al caminar hacia abajo.
+
 ## 3. Cámara
 
 - Sigue al jugador con suavizado exponencial (`FOLLOW_SMOOTHING = 8`).

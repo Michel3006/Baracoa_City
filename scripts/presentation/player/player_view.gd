@@ -22,9 +22,15 @@ signal facing_changed(facing: Vector2)
 const SPEED := 110.0
 const BODY_RADIUS := 5.0
 
-## Radio de la mano: distancia al origen a la que se dibuja el arma, en la dirección
-## hacia la que mira el jugador.
+## Distancia lateral a la que se dibuja el arma: al costado del cuerpo y nunca en su
+## eje. En una vista cenital el brazo que lleva el arma se ve al lado del personaje, y
+## ponerlo por delante (arriba o abajo) lo cruzaba encima de las piernas.
 const HAND_REACH := 5.0
+
+## Cuánto se adelanta la mano hacia arriba o hacia abajo. Menor que `HAND_REACH` a
+## propósito: el arma del pack es un palo de 16 px, y adelantarlo 5 lo clavaba en el
+## suelo por debajo de los pies.
+const HAND_VERTICAL_REACH := 3.0
 
 ## Altura de la mano sobre los pies. El origen del cuerpo esta en los pies y el actor
 ## mide `ACTOR_FRAME_SIZE` hacia arriba, asi que sin este margen el arma se dibujaria a
@@ -32,6 +38,15 @@ const HAND_REACH := 5.0
 ## arriba. Se toma de la altura del cuadro para que siga siendo coherente si cambia el
 ## tamaño del fotograma.
 const HAND_HEIGHT := float(GameConfig.ACTOR_FRAME_SIZE) * 0.375
+
+## Inclinación del arma quieta, en radianes, hacia donde mira el jugador. La textura
+## del arma apunta hacia arriba, así que sin inclinar nada sale vertical en las cuatro
+## orientaciones. Girarlo por el ángulo de la mirada lo tumbaba en horizontal al mirar
+## hacia arriba o hacia abajo: una barra de 16 px de lado cruzando la cabeza.
+const HAND_TILT := 0.32
+
+## Amplitud del arco de golpe, en radianes a cada lado de la inclinación.
+const HAND_SWING := 1.1
 
 @export var move_speed: float = SPEED
 @export var tint: Color = Color.WHITE
@@ -174,7 +189,14 @@ func set_weapon(weapon: Weapon) -> void:
 	_weapon_texture = load(weapon.texture_path) as Texture2D
 	var sprite := _ensure_weapon_sprite()
 	sprite.texture = _weapon_texture
+	# El arma se ancla por el mango y no por el centro del dibujo: así el nodo es la
+	# mano y el arco del golpe gira alrededor de ella en vez de despegar el arma de la
+	# mano a mitad de swing.
+	sprite.offset = Vector2(
+		-_weapon_texture.get_width() * 0.5, -_weapon_texture.get_height()
+	)
 	sprite.visible = true
+	_place_weapon()
 
 
 ## Aturdimiento: parpadeo rojo para que el golpe se note.
@@ -225,9 +247,13 @@ func _ensure_weapon_sprite() -> Sprite2D:
 
 
 func _physics_process(delta: float) -> void:
-	if _swing < 0.0:
-		return
-	_swing += delta
+	if _swing >= 0.0:
+		_swing += delta
+	# El arma sigue a la mano en todos los fotogramas, no solo durante el golpe. Antes
+	# solo se colocaba al pasar a quieto, de modo que al caminar se quedaba clavada en
+	# el centro del cuerpo (tapando las piernas) y al soltar el botón saltaba de golpe
+	# a la posición y a la inclinación nuevas: por eso al parar el personaje parecía
+	# volverse de lado.
 	_place_weapon()
 
 
@@ -257,19 +283,28 @@ func _place_weapon() -> void:
 	var sprite := _weapon_sprite
 	if sprite == null or not sprite.visible or _weapon_texture == null:
 		return
-	var ratio := _swing_ratio()
-	var angle := _facing.angle() + lerpf(-1.1, 1.1, ratio)
 	sprite.position = hand_position()
-	sprite.rotation = angle
+	# Fuera del golpe el arma descansa derecha, y el arco solo suma mientras dura el
+	# swing. Antes el arco estaba descentrado: su primer valor ya era `-HAND_SWING`, así
+	# que el arma salía inclinada hacia atrás incluso sin golpear.
+	var arc := 0.0
+	if _swing >= 0.0:
+		arc = (_swing_ratio() * 2.0 - 1.0) * HAND_SWING
+	sprite.rotation = _facing.y * HAND_TILT + arc
 
 
-## Posición de la mano en el cuerpo, sin depender del estado del golpe. Lo consulta el
-## HUD para dibujar el icono del arma en el sitio que le corresponde, y los tests para
-## comprobar que el arma cae sobre el cuerpo y no fuera de el.
+## Posición de la mano en el cuerpo, sin depender del estado del golpe. Lo consultan
+## los tests para comprobar que el arma cae al costado del cuerpo y no encima de él.
 func hand_position(direction: Vector2 = _facing) -> Vector2:
-	return (
-		Vector2(direction.x * HAND_REACH, direction.y * HAND_REACH)
-		- Vector2(0.0, HAND_HEIGHT)
+	# La mano va siempre al costado. Mirando a un lado se adelanta hacia ese lado, y
+	# mirando al frente o de espaldas se queda en el lado que lleva el arma. Adelantarla
+	# en vertical era justo lo que ponía el arma encima de las piernas al caminar hacia
+	# abajo, que es la dirección con la que más se camina.
+	var side := signf(direction.x)
+	if is_zero_approx(side):
+		side = 1.0
+	return Vector2(
+		side * HAND_REACH, direction.y * HAND_VERTICAL_REACH - HAND_HEIGHT
 	)
 
 
