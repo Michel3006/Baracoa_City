@@ -6,9 +6,13 @@ extends CharacterBody2D
 ## Solo dibuja y aplica el movimiento que le pide el caso de uso. No decide reglas:
 ## el daño, la vida y el estado viven en el dominio.
 ##
-## El personaje se dibuja a código porque el atlas de Tiny Dungeon solo trae
-## tiles: no hay hoja de personaje que recortar. Estados que hay (sección 8):
-## quieto, caminando en cuatro direcciones, golpeando y aturdido.
+## El cuerpo se dibuja con la hoja de sprites del pack a través de `ActorSprite`
+## (sección 25: los placeholders ya están validados). Los estados que hay son los
+## de la sección 8: quieto, caminando en cuatro direcciones, golpeando y
+## aturdido.
+##
+## El origen del nodo está en los pies del personaje. Todo lo que se dibuja encima
+## (sprite, arma, efecto de golpe) se coloca respecto a ese punto.
 ##
 ## Dependencias: presentation -> application
 
@@ -18,40 +22,54 @@ signal facing_changed(facing: Vector2)
 const SPEED := 110.0
 const BODY_RADIUS := 5.0
 
-## Píxeles recorridos por un ciclo completo de paso.
-const WALK_CYCLE := 14.0
+## Radio de la mano: distancia al origen a la que se dibuja el arma, en la dirección
+## hacia la que mira el jugador.
+const HAND_REACH := 5.0
 
-const SKIN := Color("e0b089")
-const HAIR := Color("6b3f1d")
-const SHIRT := Color("3f7fbf")
-const PANTS := Color("2b3f63")
-const OUTLINE := Color("1a1a1a")
-const FLASH := Color("ff6b6b")
-
-## Alturas del cuerpo en píxeles de mundo, con los pies en el origen.
-const LEG_TOP := -4.0
-const BODY_BOTTOM := -3.0
-const BODY_TOP := -11.0
-const HEAD_TOP := -17.0
-const HEAD_BOTTOM := -11.0
+## Altura de la mano sobre los pies. El origen del cuerpo esta en los pies y el actor
+## mide `ACTOR_FRAME_SIZE` hacia arriba, asi que sin este margen el arma se dibujaria a
+## la altura del suelo mirando hacia abajo y por encima de la cabeza mirando hacia
+## arriba. Se toma de la altura del cuadro para que siga siendo coherente si cambia el
+## tamaño del fotograma.
+const HAND_HEIGHT := float(GameConfig.ACTOR_FRAME_SIZE) * 0.375
 
 @export var move_speed: float = SPEED
 @export var tint: Color = Color.WHITE
 
 var hitbox: HitboxSensor = null
 
+## Cuerpo de combate al que golpean los enemigos. Es el `MeleeCombat` del jugador,
+## no el `Player` de dominio: así el daño pasa por la invulnerabilidad y el
+## aturdimiento en vez de saltárselos. Lo inyecta `PlayerPresenter`.
+var combat_target: Object = null
+
 var _facing: Vector2 = Vector2.DOWN
-var _walk_phase: float = 0.0
+var _is_walking: bool = false
 var _swing: float = -1.0
 var _is_hurt: bool = false
+var _is_dead: bool = false
 var _weapon_texture: Texture2D = null
 var _weapon_sprite: Sprite2D = null
+var _actor: ActorSprite = null
+## Golpe a puños o con arma: decide si la mano lleva algo.
+var _is_unarmed: bool = true
+
+
+## Vuelve a la vida tras morir. La vista no decide el punto de reaparición (eso es
+## del caso de uso): solo deshace lo que dejó puesto al morir.
+func revive() -> void:
+	set_dead(false)
+	set_hurt(false)
+	_swing = -1.0
+	stop_hitbox()
+	_refresh_animation()
 
 
 func _ready() -> void:
 	_build_collision()
+	_build_actor()
 	_build_hitbox()
-	queue_redraw()
+	_refresh_animation()
 
 
 func _build_collision() -> void:
@@ -66,6 +84,16 @@ func _build_collision() -> void:
 	add_child(shape)
 
 
+## Sprite del cuerpo. Es hijo del nodo y no la hoja entera: `ActorSprite` recorta
+## el fotograma que toca.
+func _build_actor() -> void:
+	_actor = ActorSprite.new()
+	_actor.name = "Actor"
+	add_child(_actor)
+	if not ActorVisualCatalog.apply_to(ActorVisualCatalog.PLAYER, _actor):
+		GameLogger.warning("El jugador se queda sin sprite", "PlayerView")
+
+
 func _build_hitbox() -> void:
 	hitbox = HitboxSensor.new()
 	hitbox.name = "Hitbox"
@@ -73,11 +101,16 @@ func _build_hitbox() -> void:
 	hitbox.exclude_body(self)
 
 
-## Aplica el desplazamiento resuelto por la física y hace avanzar la animación.
+## Aplica el desplazamiento resuelto por la física.
+##
+## Solo decide si el actor está caminando o quieto; el ciclo de la animación lo
+## lleva `ActorSprite` con su propio reloj. La vista no lleva la cuenta de los
+## fotogramas: eso sería duplicar una animación que ya sabe moverse sola.
 func apply_motion(moved: Vector2) -> void:
-	if not moved.is_zero_approx():
-		_walk_phase = fposmod(_walk_phase + moved.length() / WALK_CYCLE, 1.0)
-		queue_redraw()
+	var walking := not moved.is_zero_approx()
+	if walking != _is_walking:
+		_is_walking = walking
+		_refresh_animation()
 	move_performed.emit(moved)
 
 
@@ -87,7 +120,9 @@ func set_facing(facing: Vector2) -> void:
 	_facing = facing
 	if hitbox != null:
 		hitbox.face(facing)
-	queue_redraw()
+	if _actor != null:
+		_actor.set_facing(facing)
+	_refresh_animation()
 	facing_changed.emit(facing)
 
 
@@ -104,7 +139,9 @@ func begin_attack(weapon: Weapon = null) -> void:
 	if hitbox != null:
 		hitbox.face(_facing)
 		hitbox.set_active(true)
-	queue_redraw()
+	if _actor != null:
+		_actor.play(ActorSprite.ATTACK, true)
+	_refresh_animation()
 
 
 ## Apaga la hitbox sin cortar la animación: el golpe ya se ha registrado.
@@ -113,29 +150,31 @@ func stop_hitbox() -> void:
 		hitbox.set_active(false)
 
 
-## Cierra la pose de golpe.
+## Cierra la pose de golpe y vuelve a lo que hubiera: caminar o quieto.
 func end_attack() -> void:
 	_swing = -1.0
 	stop_hitbox()
-	queue_redraw()
+	_refresh_animation()
 
 
-## Cambia el arma visible. Sin textura se dibuja a mano.
+## Cambia el arma visible y, con ella, el alcance de la hitbox.
+##
+## Los puños no tienen textura: es lo que distingue a simple vista el golpe sin
+## arma del golpe con arma, y `WeaponCatalog` es quien lo decide.
 func set_weapon(weapon: Weapon) -> void:
 	if weapon == null:
 		return
+	_is_unarmed = WeaponCatalog.is_unarmed(weapon)
 	if hitbox != null:
 		hitbox.set_reach(weapon.attack_range)
-	if weapon.texture_path.is_empty() or not ResourceLoader.exists(weapon.texture_path):
+	if _is_unarmed or weapon.texture_path.is_empty() or not ResourceLoader.exists(weapon.texture_path):
 		_weapon_texture = null
 		_ensure_weapon_sprite().visible = false
-		queue_redraw()
 		return
 	_weapon_texture = load(weapon.texture_path) as Texture2D
 	var sprite := _ensure_weapon_sprite()
 	sprite.texture = _weapon_texture
 	sprite.visible = true
-	queue_redraw()
 
 
 ## Aturdimiento: parpadeo rojo para que el golpe se note.
@@ -143,7 +182,34 @@ func set_hurt(active: bool) -> void:
 	if _is_hurt == active:
 		return
 	_is_hurt = active
-	queue_redraw()
+	_apply_tint()
+
+
+## Muerte: el cuerpo queda congelado en el ultimo fotograma.
+func set_dead(active: bool) -> void:
+	if _is_dead == active:
+		return
+	_is_dead = active
+	if active:
+		if hitbox != null:
+			stop_hitbox()
+		if _actor != null:
+			_actor.play(ActorSprite.DEAD, true)
+	_ensure_weapon_sprite().visible = false
+	_apply_tint()
+	_refresh_animation()
+
+
+## El tinte es como se nota el aturdimiento: el sprite se tiñe entero en vez de
+## parpadear, que a 16 px y a 60Hz sería ilegible.
+func _apply_tint() -> void:
+	var flash := Color("ff6b6b")
+	if _is_hurt:
+		modulate = flash
+	elif _is_dead:
+		modulate = Color(0.45, 0.45, 0.5, 0.85)
+	else:
+		modulate = tint
 
 
 func _ensure_weapon_sprite() -> Sprite2D:
@@ -151,91 +217,60 @@ func _ensure_weapon_sprite() -> Sprite2D:
 		return _weapon_sprite
 	_weapon_sprite = Sprite2D.new()
 	_weapon_sprite.name = "Weapon"
-	_weapon_sprite.centered = false
+	_weapon_sprite.centered = true
 	_weapon_sprite.z_index = 1
+	_weapon_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_weapon_sprite)
 	return _weapon_sprite
 
 
 func _physics_process(delta: float) -> void:
+	if _swing < 0.0:
+		return
+	_swing += delta
+	_place_weapon()
+
+
+## Elige la animación que toca: la muerte no cede, y el golpe manda sobre el
+## desplazamiento para que no se interrupta a mitad de arco.
+func _refresh_animation() -> void:
+	if _actor == null:
+		return
+	if _is_dead:
+		_actor.play(ActorSprite.DEAD)
+		return
 	if _swing >= 0.0:
-		_swing += delta
-		queue_redraw()
-
-
-func _draw() -> void:
-	var step := _walk_phase * TAU
-	var bob := 0.0
-	if _walk_phase > 0.0:
-		bob = absf(sin(step)) * 1.0
-	var leg := sin(step) * 2.0 if _walk_phase > 0.0 else 0.0
-	var shade := FLASH if _is_hurt else tint
-
-	_draw_legs(leg, shade)
-	_draw_torso(bob, shade)
-	_draw_head(bob, shade)
-	_draw_arm(step, shade)
-	_draw_weapon()
-
-
-## Las piernas van por detrás del torso, así que se dibujan primero.
-func _draw_legs(swing: float, shade: Color) -> void:
-	for direction: int in [-1, 1]:
-		var offset: float = swing * direction
-		var leg_rect := Rect2(-3.0 + offset * 0.5, LEG_TOP, 2.0, 0.0 - LEG_TOP)
-		draw_rect(leg_rect, PANTS * shade)
-		draw_rect(leg_rect, OUTLINE, false, 1.0)
-
-
-func _draw_torso(bob: float, shade: Color) -> void:
-	var body := Rect2(-4.0, BODY_TOP + bob, 8.0, BODY_BOTTOM - BODY_TOP)
-	draw_rect(body, SHIRT * shade)
-	draw_rect(body, OUTLINE, false, 1.0)
-
-
-## La cara solo se dibuja de frente y de perfil: de espaldas no hay ojos.
-func _draw_head(bob: float, shade: Color) -> void:
-	var height := HEAD_BOTTOM - HEAD_TOP
-	var top := HEAD_TOP + bob
-	var face_offset := _facing.x * 1.0
-	var head := Rect2(-3.5 + face_offset, top, 7.0, height)
-	draw_rect(head, SKIN * shade)
-	draw_rect(head, OUTLINE, false, 1.0)
-	var hair := Rect2(-4.0 + face_offset, top - 1.0, 8.0, 3.0)
-	draw_rect(hair, HAIR * shade)
-	if _facing == Vector2.UP:
+		_actor.play(ActorSprite.ATTACK)
 		return
-	var eye_y := top + 3.0
-	if _facing == Vector2.DOWN:
-		draw_rect(Rect2(-2.0 + face_offset, eye_y, 1.0, 1.0), OUTLINE)
-		draw_rect(Rect2(1.0 + face_offset, eye_y, 1.0, 1.0), OUTLINE)
+	if _is_walking:
+		_actor.play(ActorSprite.WALK)
 		return
-	var eye_x := 1.5 * _facing.x + face_offset
-	draw_rect(Rect2(eye_x, eye_y, 1.0, 1.0), OUTLINE)
+	_actor.play(ActorSprite.IDLE)
+	_place_weapon()
 
 
-## Brazo que golpea: se adelanta al swing y vuelve atrás.
-func _draw_arm(step: float, shade: Color) -> void:
-	var extension := 0.0
-	if _swing >= 0.0:
-		extension = sin(_swing_ratio() * PI) * 3.0
-	else:
-		extension = sin(step) * 1.0
-	var hand := Vector2(_facing.x * (4.0 + extension), _facing.y * (1.0 + extension))
-	draw_rect(Rect2(hand - Vector2(1.0, 1.0), Vector2(2.0, 2.0)), SKIN * shade)
-
-
-## El arma: textura del catálogo si la hay, hoja dibujada si no.
-func _draw_weapon() -> void:
-	if _weapon_texture == null:
-		return
+## Coloca el arma en la mano y la orienta con el arco del golpe.
+##
+## Sin arma no se dibuja nada: es la diferencia visible entre el golpe a puños y el
+## golpe con arma.
+func _place_weapon() -> void:
 	var sprite := _weapon_sprite
-	if sprite == null or not sprite.visible:
+	if sprite == null or not sprite.visible or _weapon_texture == null:
 		return
-	var ratio := _swing_ratio() if _swing >= 0.0 else 0.0
+	var ratio := _swing_ratio()
 	var angle := _facing.angle() + lerpf(-1.1, 1.1, ratio)
-	sprite.position = Vector2(_facing.x * 5.0, _facing.y * 2.0) - sprite.texture.get_size() * 0.5
+	sprite.position = hand_position()
 	sprite.rotation = angle
+
+
+## Posición de la mano en el cuerpo, sin depender del estado del golpe. Lo consulta el
+## HUD para dibujar el icono del arma en el sitio que le corresponde, y los tests para
+## comprobar que el arma cae sobre el cuerpo y no fuera de el.
+func hand_position(direction: Vector2 = _facing) -> Vector2:
+	return (
+		Vector2(direction.x * HAND_REACH, direction.y * HAND_REACH)
+		- Vector2(0.0, HAND_HEIGHT)
+	)
 
 
 ## Avance del swing, de 0 a 1, sobre el tiempo de recuperación configurado.

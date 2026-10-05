@@ -49,13 +49,33 @@ Game._ready()
   -> GameLogger.configure()
   -> GameEvents (bus de eventos)
   -> GameSession (crea el Player del dominio)
-  -> MainWorldView (crea zona + jugador + cámara)
+  -> GameSession.setup_npcs() (crea el NpcDirector y sus agentes)
+  -> MainWorldView (crea zona + jugador + cámara + HUD + capa de efectos)
+  -> MainWorldView.setup_npcs(director) (da cuerpo a los agentes)
   -> MovementController.bind(player)
+  -> RespawnInput.bind(session)
+  -> Timer de reparto de objetivo (NPC_TARGET_REFRESH)
 ```
 
 El resto del código recibe sus colaboradores por setter (`bind`, `setup`,
-`connect_movement`) o por signals. No hay singletons adicionales ni
+`connect_cases`) o por signals. No hay singletons adicionales ni
 localizadores de servicios.
+
+El orden importa: los enemigos se crean **antes** que la escena del mundo, porque
+`MainWorldView` avisa de que el jugador está listo mientras se construye y para ese
+aviso ya tiene que saber cuántos enemigos hay en la zona.
+
+Dos relojes, y ninguno toca los casos de uso de otro:
+
+- El de cada enemigo lo mueve su propio `NpcPresenter._physics_process()`.
+- El reparto de objetivo lo mueve un `Timer` del composition root. `distribute_target()`
+  solo asigna a quién persigue cada uno; no avanza ningún caso de uso. Por eso puede
+  ir a su aire sin tocar el ritmo de la IA, y por eso está atado a un reloj y no al
+  movimiento del jugador: si dependiera de `move_performed`, un jugador quieto no lo
+  perseguiría nadie.
+
+Al terminar, `_exit_tree()` suelta en **orden inverso**: primero el director de NPC,
+porque sus señales apuntan al presentador, que a su vez apunta al dominio.
 
 ## 4. Flujo de una entrada de movimiento
 
@@ -76,25 +96,46 @@ seguirá aplicando la posición que le llegue, sin que la vista se entere.
 ```text
 scripts/
 ├── shared/
-│   ├── game.gd                     autoload Game: composition root + reloj
+│   ├── game.gd                     autoload Game: composition root + relojes
 │   └── collision_layers.gd         bits de las capas 2d_physics
 ├── domain/
 │   ├── events/game_events.gd       bus de señales
 │   ├── player/player.gd            entidad y sus invariantes
 │   ├── player/player_state.gd      máquina de estados
 │   ├── player/health.gd            vida, daño, muerte
-│   └── player/character_stats.gd   estadísticas base
+│   ├── player/character_stats.gd   estadísticas base
+│   ├── combat/weapon.gd            arma con daño, alcance y durabilidad
+│   ├── combat/weapon_catalog.gd    catálogo de armas, incluido el puñetazo
+│   ├── combat/damage_rules.gd      fórmula de daño compartida por ambos lados
+│   └── npc/
+│       ├── npc_kind.gd             tipos de enemigo (identificadores de dominio)
+│       ├── npc_state.gd            máquina de estados y grafo de transiciones
+│       ├── npc.gd                  entidad del enemigo
+│       └── npc_behavior.gd         estadísticas de combate y detección
 ├── application/
-│   ├── game_session.gd             caso de uso: inicio de sesión y reaparición
-│   └── player/movement_controller.gd  caso de uso: movimiento
+│   ├── game_session.gd             caso de uso: sesión, reaparición, avance
+│   ├── player/movement_controller.gd  caso de uso: movimiento
+│   ├── combat/melee_combat.gd      caso de uso: golpe del jugador, con o sin arma
+│   └── npc/
+│       ├── npc_brain.gd            caso de uso: qué hace el enemigo ahora
+│       ├── npc_combat.gd           caso de uso: golpe del enemigo
+│       ├── npc_spawn_table.gd      qué enemigos hay y dónde
+│       └── npc_director.gd         caso de uso: dirige a los enemigos de la zona
 ├── presentation/
 │   ├── world/main_world_view.gd    raíz del mundo
 │   ├── world/zone_view.gd          una zona con terreno, decor y límites
 │   ├── world/world_decor.gd        base de obstáculos sólidos
 │   ├── world/decor/                árbol, piedra
 │   ├── world/structures/           casa
-│   ├── player/player_view.gd       sprite y colisión del jugador
+│   ├── player/player_view.gd       sprite, colisión, hitbox y mano del jugador
 │   ├── player/player_presenter.gd  entrada -> caso de uso
+│   ├── player/hitbox_sensor.gd     área de golpe del jugador
+│   ├── player/respawn_input.gd     botón de revivir
+│   ├── actors/actor_sprite.gd      reproductor de animaciones de las hojas del pack
+│   ├── actors/actor_visual_catalog.gd  tipo de actor -> hoja y filas
+│   ├── npc/                        cuerpo, presentador y aparición de enemigos
+│   ├── fx/slash_effect.gd          arco del golpe
+│   ├── hud/hud.gd                  barras de vida, stamina y golpe, e icono de arma
 │   └── camera/world_camera.gd      seguimiento y límites
 ├── infrastructure/
 │   ├── configuration/game_config.gd
@@ -105,9 +146,20 @@ tests/
 ├── support/test_runner.gd          runner unitario
 ├── support/screenshot.gd           captura de frame
 ├── support/script_test_context.gd  aserciones
-├── unit/                           6 archivos, 30 pruebas
-└── integration/                    mundo y fisica, 6 pruebas
+├── unit/                           14 archivos, 110 pruebas
+└── integration/
+    ├── world_physics_runner.gd     6 pruebas
+    ├── combat_runner.gd            11 pruebas
+    └── npc_combat_runner.gd        18 pruebas
 ```
+
+### Qué NO hereda el combate del enemigo
+
+`NpcCombat` **no** hereda de `MeleeCombat`, a propósito. Los dos son casos de uso y
+el enemigo no tiene inventario, ni armas intercambiables, ni stamina: si heredara,
+arrastraría un `Player` y un `Weapon` que no le sirven. Lo que sí comparten son las
+reglas de daño, y eso vive en `DamageRules`, que recibe un objetivo con la forma
+`take_damage` / `is_dead` / `stats` sin saber de qué clase es.
 
 ## 6. Sistema de coordenadas (sección 16)
 
@@ -147,32 +199,92 @@ del rectángulo jugable: mantiene al jugador dentro sin gastar tiles de borde.
 ## 8. Testing
 
 ```bash
-# 30 pruebas de dominio, movimiento, limites y configuracion
+# 110 pruebas de dominio, combate, enemigos, sprites y configuracion
 godot --headless --script res://tests/support/test_runner.gd
 
 # 6 pruebas con fisica real: colisiones y sincronía dominio/vista
 godot --headless --script res://tests/integration/world_physics_runner.gd
+
+# 11 pruebas del golpe del jugador: hitbox, dano, cooldown, arco
+godot --headless --script res://tests/integration/combat_runner.gd
+
+# 18 pruebas del enemigo: IA, golpe de ida y vuelta, muerte y reaparición
+godot --headless --script res://tests/integration/npc_combat_runner.gd
 
 # Captura un frame para inspeccion visual
 godot --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 432 1
 ```
 
 El runner unitario carga cada archivo de `tests/unit/`, invoca `register()` y
-ejecuta cada caso con un `ScriptTestContext`. Termina con código 1 si algo falla.
+ejecuta cada caso con un `ScriptTestContext`. Termina con código 1 si algo falla. Si
+el archivo declara `teardown()`, lo llama tras cada caso: lo necesitan los casos que
+crean nodos, porque un `Sprite2D` sin liberar deja la textura viva y Godot avisa de
+fugas al salir.
 
 Los tests unitarios no necesitan `SceneTree`: `Player`, `Health` y
 `CharacterStats` son `RefCounted`. Eso es una consecuencia directa de la regla de
-dependencias, y es la razón por la que el dominio se prueba tan rápido.
+dependencias, y es la razón por la que el dominio se prueba tan rápido. Los sprites
+también se pueden probar así: `Sprite2D` se configura y se consulta fuera del árbol, y
+`_process` se llama a mano para no depender de la tasa de fotogramas.
 
 Los tests de integración sí lo necesitan, porque `move_and_slide()` solo resuelve
 colisiones cuando el servidor de física ha avanzado. Por eso viven en un runner
-propio.
+propio. Hay tres y no uno: cada suite tiene que **bajar de forma distinta** cuando se
+le rompe su cadena. En el runner de combate se desconecta el presentador y bajan tres
+casos; en el de enemigos, sin cuerpos `CharacterBody2D` o sin reparto de objetivo,
+bajan las de la IA.
 
 `screenshot.gd` acepta `x`, `y` y `zoom`: teletransporta al jugador y ajusta el
 aumento de la camara, lo que permite inspeccionar una zona entera o un elemento
-concreto sin abrir el editor.
+concreto sin abrir el editor. **No funciona en `--headless`**: el driver de render
+headless no emite `frame_post_draw` y el script se queda esperando ahí. Sin un
+`Xvfb` no hay forma de capturar la pantalla en esta máquina, así que los sprites se
+revisan contando píxeles de las hojas.
 
-## 9. Extender el mapa
+## 9. Sprites: cómo se lee una hoja del pack
+
+Los gráficos vienen del **Ninja Adventure Asset Pack** de Pixel-boy (CC0). Solo se
+copiaron las hojas que el juego usa, no el pack entero: `assets/` pesa unos 1,4 MB
+de los 26 MB del paquete.
+
+| hoja | tamaño | rejilla |
+| --- | --- | --- |
+| `assets/characters/ninja_blue.png` | 64x112 | 4 x 7 de 16x16 |
+| `assets/characters/{slime,owl,spider_red,lizard}.png` | 64x64 | 4 x 4 de 16x16 |
+| `assets/fx/slash.png` | 128x32 | 8 de 16x**32** |
+| `assets/weapons/{blade,rock}.png` | 6x11 y 3x16 | sin rejilla |
+
+Dos cosas que no se deducen mirando los píxeles y que por eso están en
+`GameConfig`:
+
+**Las filas del personaje son las cuatro orientaciones**, en el orden que fija
+`ACTOR_ROW_DOWN`, `ACTOR_ROW_SIDE`, `ACTOR_ROW_UP`, `ACTOR_ROW_SIDE_MIRRORED`. Las
+dos filas laterales son imágenes especulares la una de la otra, así que **no hay forma
+de saber cuál es izquierda y cuál derecha**. Está en la configuración y no en el
+código a propósito: si al jugar el personaje lateral va del revés, se intercambian esos
+dos números y no hay que tocar ningún otro archivo.
+
+**El fotograma del efecto de golpe es de 16 de ancho por 32 de alto**, no cuadrado.
+Por eso `FX_FRAME_WIDTH` y `FX_FRAME_HEIGHT` están separados. Recortarlo en 16x16
+parte la hoja en dos filas y el efecto recorre la de arriba, que está casi vacía: el
+golpe parpadea en blanco en vez de dibujarse, sin ningún error.
+
+`ActorSprite` hace el recorte con `hframes` y `vframes` de `Sprite2D`: no hay ningún
+`AtlasTexture` que mantener. Dos tipos de clip:
+
+- **direccional**: la fila sale de la orientación, así que el mismo clip se ve hacia
+  las cuatro. Es lo que usa caminar.
+- **fila fija**: la animación solo existe mirando al frente, como el golpe. Se dibuja
+  siempre en su fila y se refleja en horizontal cuando el actor mira a un lado.
+
+Los enemigos del pack no traen fila de golpe propia, así que reutilizan la pose de
+frente, que es lo que dice `ActorVisualCatalog.attack_row_of`.
+
+Cambiar la hoja del jugador es cambiar `ActorVisualCatalog.PLAYER_SHEET`. Los tipos
+de enemigo (`NpcKind`) viven en el dominio; el catálogo visual los traduce a hoja. La
+regla de capas manda sobre lo que resulte más cómodo.
+
+## 10. Extender el mapa
 
 Añadir una zona nueva:
 

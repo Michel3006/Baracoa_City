@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://vy4ybap2236w"
-path="res://.godot/imported/sword.png-129af32814fbb6e5bc2233e933c75793.ctex"
+uid="uid://ds5svim1a1esk"
+path="res://.godot/imported/spider_red.png-ca9978ab7dbb65afa364509864fc1110.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/weapons/sword.png"
-dest_files=["res://.godot/imported/sword.png-129af32814fbb6e5bc2233e933c75793.ctex"]
+source_file="res://assets/characters/spider_red.png"
+dest_files=["res://.godot/imported/spider_red.png-ca9978ab7dbb65afa364509864fc1110.ctex"]
 
 [params]
 

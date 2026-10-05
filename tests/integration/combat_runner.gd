@@ -83,6 +83,8 @@ func _run() -> void:
 	await _check("el cooldown bloquea el segundo golpe", _cooldown_blocks)
 	await _check("la invulnerabilidad evita el daño repetido", _invulnerability_holds)
 	await _check("el reloj no retrocede", _clock_never_rewinds)
+	await _check("el arco sale al golpear con arma", _slash_spawns_armed)
+	await _check("a puños no sale arco", _no_slash_unarmed)
 
 	_cleanup()
 	_report()
@@ -169,6 +171,67 @@ func _cleanup() -> void:
 		if is_instance_valid(body):
 			body.queue_free()
 	_sacrificial.clear()
+
+
+## El arco de golpe tiene que aparecer y desaparecer solo.
+##
+## El efecto no decide nada: aparece porque el presentador oyó el aviso del caso de
+## uso. Se comprueba con la escena real porque el efecto vive en una capa aparte y no
+## cuelga de nadie a quien se le pueda preguntar por su cuenta.
+func _slash_spawns_armed() -> void:
+	var layer: Node2D = _game().world_view.fx_layer
+	if not _context.check(layer != null, "la capa de efectos existe"):
+		return
+	await _drain_fx(layer)
+	_reset_combat()
+
+	_context.check(_combat().try_attack(Vector2.RIGHT), "el golpe con arma sale")
+	await _settle()
+	_context.check_equal(layer.get_child_count(), 1, "aparece un arco")
+	if layer.get_child_count() == 1:
+		_context.check(
+			layer.get_child(0) is SlashEffect, "y es un efecto de golpe"
+		)
+
+	# Se suelta solo: si se quedara colgado en la capa, se acumularían arcos y
+	# taparían la escena.
+	await _drain_fx(layer)
+	_context.check_equal(layer.get_child_count(), 0, "y se borra al terminar")
+
+
+## A puños no hay nada que corte el aire, así que no sale arco.
+##
+## Es la diferencia visible entre las dos formas de pegar que se pidieron, y la que
+## distingue el golpe desarmado del armada con solo mirar la pantalla. Salía porque el
+## presentador soltava el efecto sin mirar qué iba en la mano.
+func _no_slash_unarmed() -> void:
+	var layer: Node2D = _game().world_view.fx_layer
+	if not _context.check(layer != null, "la capa de efectos existe"):
+		return
+	await _drain_fx(layer)
+	_reset_combat()
+
+	_context.check(_combat().try_attack(Vector2.RIGHT, true), "el puñetazo sale")
+	await _settle()
+	_context.check_equal(
+		layer.get_child_count(), 0, "sin arco: a puños no hay hoja que corte el aire"
+	)
+
+	# Y el golpe desarmado no apaga el arma que llevas: eso se comprueba en los
+	# unitarios, aquí solo que la diferencia existe de verdad.
+	_context.check(
+		not WeaponCatalog.is_unarmed(_combat().active_weapon(false)),
+		"y el arma sigue siendo la de antes"
+	)
+
+
+## Espera a que la capa de efectos se vacíe. Los arcos se borran solos, así que solo
+## hay que darles tiempo; si no, el arco anterior se contaría como el nuevo.
+func _drain_fx(layer: Node2D, limit: int = 120) -> void:
+	var waited := 0
+	while layer.get_child_count() > 0 and waited < limit:
+		await physics_frame
+		waited += 1
 
 
 ## Golpea en una dirección y deja la ventana abierta, para poder actuar sobre el

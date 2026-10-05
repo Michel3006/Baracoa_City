@@ -1,0 +1,239 @@
+class_name ActorSprite
+extends Sprite2D
+
+## Reproductor de animaciones para las hojas de sprites del pack (sección 25).
+##
+## Sustituye a los personajes dibujados a mano con rectángulos. No decide nada de
+## juego: solo traduce un nombre de animación y una orientación a un fotograma de
+## la hoja. Ni el estado, ni la vida, ni el daño se tocan aquí.
+##
+## ## Cómo es una hoja
+##
+## Las hojas del pack son rejillas de cuadros de `GameConfig.ACTOR_FRAME_SIZE`
+## (16x16). `Sprite2D` hace el recorte con `hframes` y `vframes`, así que aquí no
+## hay ni un solo `AtlasTexture` que mantener.
+##
+## Las hojas de caminar ocupan cuatro filas, una por orientación, en el orden que
+## fija `GameConfig.ACTOR_ROW_*`: abajo, un lateral, arriba y el otro lateral. Los
+## fotogramas de una animación concreta son las **columnas**.
+##
+## ## Dos tipos de clip
+##
+## - `directional`: la fila sale de la orientación, así que el mismo clip se ve
+##   mirando a las cuatro direcciones. Es lo que usa caminar.
+## - fila fija: la animación solo existe mirando al frente, como el golpe. Se dibuja
+##   siempre en su fila y se refleja en horizontal cuando el actor mira a un lado.
+##
+## ## El pie del actor
+##
+## El origen del nodo está en los pies, no en el centro del cuadro: los cuerpos se
+## dibujan hacia arriba desde ahí. Por eso el sprite va desplazado hacia arriba lo
+## que mide medio cuadro (`GameConfig.ACTOR_SPRITE_OFFSET`).
+##
+## Dependencias: presentation, infrastructure/configuration
+
+## Fotogramas por ciclo de caminata.
+const WALK := &"walk"
+## Un único fotograma de la fila de la orientación: el actor parado.
+const IDLE := &"idle"
+## Golpe cuerpo a cuerpo. Se reproduce una vez y deja al actor en su último frame.
+const ATTACK := &"attack"
+## Lo que queda al morir.
+const DEAD := &"dead"
+
+## Nombres de animación que este reproductor conoce. Permite validar un nombre
+## antes de reproducirlo y avisar en vez de quedarse en silencio.
+const KNOWN_CLIPS: Array[StringName] = [WALK, IDLE, ATTACK, DEAD]
+
+## Hoja de la que se recortan los fotogramas.
+var sheet_path: String = ""
+## Clips definidos para esta hoja. Lo rellena `configure()`.
+var clips: Dictionary = {}
+
+var _clip: StringName = &""
+var _elapsed: float = 0.0
+var _facing: Vector2 = Vector2.DOWN
+var _playing: bool = false
+
+
+func _ready() -> void:
+	centered = true
+	offset = GameConfig.ACTOR_SPRITE_OFFSET
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	if clips.is_empty():
+		define_defaults()
+
+
+## Carga la hoja y define los clips estandar de un actor que camina en cuatro
+## direcciones.
+##
+## `walk_row` es la fila de la orientación de abajo y `attack_row` la del golpe. Los
+## enemigos del pack no tienen fila de ataque propia y reutilizan la de abajo, así
+## que quien llama decide cuál de las dos filas usa cada cosa.
+func configure(
+	path: String,
+	walk_row: int = GameConfig.ACTOR_ROW_DOWN,
+	attack_row: int = -1
+) -> void:
+	sheet_path = path
+	var sheet: Texture2D = load(path) as Texture2D
+	if sheet == null:
+		GameLogger.warning("No se pudo cargar la hoja %s" % path, "ActorSprite")
+		return
+	texture = sheet
+	_apply_grid(sheet)
+	define_defaults(walk_row, attack_row)
+
+
+## Recorta la hoja en una rejilla de cuadros de `GameConfig.ACTOR_FRAME_SIZE`.
+func _apply_grid(sheet: Texture2D) -> void:
+	var frame := float(maxi(1, GameConfig.ACTOR_FRAME_SIZE))
+	var size := sheet.get_size()
+	hframes = maxi(1, int(round(size.x / frame)))
+	vframes = maxi(1, int(round(size.y / frame)))
+
+
+## Clips que espera una hoja deactor con caminar en cuatro direcciones.
+##
+## El golpe son cuatro fotogramas en su propia fila. La hoja del jugador tiene
+## exactamente esa disposicion: cuatro filas de caminar, despues el golpe.
+func define_defaults(walk_row: int = GameConfig.ACTOR_ROW_DOWN, attack_row: int = -1) -> void:
+	var strike := attack_row if attack_row >= 0 else walk_row + 4
+	clips = {
+		WALK: {
+			"row": walk_row,
+			"frames": GameConfig.ACTOR_WALK_FRAMES,
+			"fps": GameConfig.ACTOR_WALK_FPS,
+			"loop": true,
+			"directional": true,
+		},
+		IDLE: {
+			"row": walk_row,
+			"frames": 1,
+			"fps": 1.0,
+			"loop": true,
+			"directional": true,
+		},
+		ATTACK: {
+			"row": strike,
+			"frames": GameConfig.ACTOR_ATTACK_FRAMES,
+			"fps": GameConfig.ACTOR_ATTACK_FPS,
+			"loop": false,
+			"directional": false,
+		},
+		DEAD: {
+			"row": walk_row,
+			"frames": 1,
+			"fps": 1.0,
+			"loop": true,
+			"directional": true,
+		},
+	}
+	_refresh()
+
+
+## Reproduce una animación. Devuelve `true` si ha cambiado algo.
+##
+## Volver a pedir la animación que ya suena no reinicia el ciclo: si el codigo de
+## arriba llama a `play(WALK)` en cada fotograma de física, la caminata no
+## reiniciaria el paso a cada frame.
+func play(name: StringName, restart: bool = false) -> bool:
+	if not clips.has(name):
+		GameLogger.warning("Clip desconocido: %s" % name, "ActorSprite")
+		return false
+	if _clip == name and _playing and not restart:
+		return false
+	_clip = name
+	_elapsed = 0.0
+	_playing = true
+	_refresh()
+	return true
+
+
+func stop() -> void:
+	_playing = false
+
+
+func is_playing(name: StringName) -> bool:
+	return _playing and _clip == name
+
+
+func current_clip() -> StringName:
+	return _clip
+
+
+## Orientacion del actor. Solo afecta a los clips direccionales.
+func set_facing(facing: Vector2) -> void:
+	if facing.is_zero_approx() or facing.is_equal_approx(_facing):
+		return
+	_facing = facing
+	_refresh()
+
+
+func facing() -> Vector2:
+	return _facing
+
+
+func _process(delta: float) -> void:
+	if not _playing or delta <= 0.0:
+		return
+	var clip := clips.get(_clip, {}) as Dictionary
+	var frames := int(clip.get("frames", 1))
+	var fps := float(clip.get("fps", 1.0))
+	if frames <= 1 or fps <= 0.0:
+		return
+	_elapsed += delta * fps
+	# El recorte se actualiza en cada fotograma, no solo cuando se cierra un ciclo
+	# entero. Convolver primero y decidir despues si toca refrescar dejaba el primer
+	# medio segundo de caminata con la misma pose, porque hasta entonces no hay
+	# ningun cambio de fotograma que dibujar.
+	if _elapsed >= float(frames):
+		if bool(clip.get("loop", false)):
+			# `fposmod` guarda el sobrante en vez de tirarlo, asi que un `delta` grande
+			# no hace que el ciclo se salte fotogramas.
+			_elapsed = fposmod(_elapsed, float(frames))
+		else:
+			# Una animacion que no se repite se queda en su ultimo fotograma: es lo
+			# que hace que el golpe se vea entero en vez de parpadear.
+			_elapsed = float(frames) - 1.0
+			_playing = false
+	_refresh()
+
+
+## Vuelca el estado actual en el `frame` del `Sprite2D`.
+func _refresh() -> void:
+	if texture == null or not clips.has(_clip):
+		return
+	var clip := clips[_clip] as Dictionary
+	var row := int(clip.get("row", 0))
+	if bool(clip.get("directional", false)):
+		row += _row_offset()
+	var frames := maxi(1, int(clip.get("frames", 1)))
+	var column := 0
+	if frames > 1:
+		column = clampi(int(_elapsed), 0, frames - 1)
+	column = mini(column, maxi(0, hframes - 1))
+	frame = clampi(row * maxi(1, hframes) + column, 0, maxi(0, hframes * vframes - 1))
+	_apply_flip(clip)
+
+
+## Un clip direccional ya trae las cuatro orientaciones en sus propias filas, asi
+## que no hay nada que reflejar. Uno de fila fija (el golpe) solo existe mirando al
+## frente, y para que no salga de frente cuando el actor va de lado se refleja.
+func _apply_flip(clip: Dictionary) -> void:
+	if bool(clip.get("directional", false)):
+		flip_h = false
+		return
+	flip_h = _facing == Vector2.LEFT
+
+
+## Cuantas filas suma la orientacion actual al clip direccional. Se expresa como
+## distancia respecto a la fila de abajo, que es la que se pasa al definir el clip.
+func _row_offset() -> int:
+	if _facing.y < 0.0:
+		return GameConfig.ACTOR_ROW_UP - GameConfig.ACTOR_ROW_DOWN
+	if _facing.y > 0.0:
+		return 0
+	if _facing.x < 0.0:
+		return GameConfig.ACTOR_ROW_SIDE - GameConfig.ACTOR_ROW_DOWN
+	return GameConfig.ACTOR_ROW_SIDE_MIRRORED - GameConfig.ACTOR_ROW_DOWN

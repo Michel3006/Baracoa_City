@@ -97,9 +97,15 @@ func is_ignored(body: Object) -> bool:
 
 
 ## Cuerpos que la hitbox tiene encima ahora mismo, ya filtrados.
+##
+## La guarda mira `monitoring`, no `_is_active`. `set_active()` enciende el sensor
+## con `set_deferred()`, así que hay un frame en que el flag lógico ya vale `true`
+## pero el motor todavía tiene el apagado. Consultar en ese frame hace que Godot
+## avise por consola de que no se pueden buscar solapamientos sin monitoreo, y un
+## error por consola significa que algo está mal aunque el resultado sea verde.
 func overlapping_bodies() -> Array[Node2D]:
 	var found: Array[Node2D] = []
-	if not _is_active:
+	if not _is_active or not monitoring:
 		return found
 	for body: Node2D in get_overlapping_bodies():
 		if is_ignored(body):

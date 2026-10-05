@@ -17,7 +17,10 @@ const TEST_FILES: PackedStringArray = [
 	"res://tests/unit/test_movement_intent.gd",
 	"res://tests/unit/test_damage_rules.gd",
 	"res://tests/unit/test_weapon.gd",
+	"res://tests/unit/test_actor_sprite.gd",
 	"res://tests/unit/test_melee_combat.gd",
+	"res://tests/unit/test_npc.gd",
+	"res://tests/unit/test_npc_brain.gd",
 	"res://tests/unit/test_world_bounds.gd",
 	"res://tests/unit/test_game_config.gd",
 ]
@@ -60,6 +63,20 @@ func _run_file(path: String) -> void:
 		else:
 			_failures.append("%s :: %s" % [path.get_file(), case_name])
 			print("  [FAIL] %s" % case_name)
+		_teardown(test_case)
+
+
+## Suelta lo que un caso haya dejado puesto.
+##
+## Los unitarios no tienen escena, pero sí pueden crear nodos: un `Sprite2D` con una
+## hoja cargada se queda con la textura si nadie lo libera, y Godot avisa de fugas al
+## salir. Como un error por consola significa que algo está mal aunque el resultado sea
+## verde, el runner da un sitio donde soltar eso en vez de confiar en que cada caso se
+## acuerde.
+func _teardown(test_case: RefCounted) -> void:
+	if not test_case.has_method(&"teardown"):
+		return
+	(test_case as Object).call(&"teardown")
 
 
 func _invoke(callable: Callable) -> bool:

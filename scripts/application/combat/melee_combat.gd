@@ -33,8 +33,15 @@ const REASON_STUNNED := &"stunned"
 var player: Player
 var weapon: Weapon
 
+## Golpe sin arma. Vive aquí para que la presentación no tenga que crear armas:
+## el presentador solo dice "sin arma" y este caso de uso decide con cuál pega.
+var unarmed: Weapon
+
 
 var _cooldown_remaining: float = 0.0
+## Cooldown total del último golpe, para que la barra de la UI mida contra el arma
+## que se usó y no contra la que se lleva encima ahora.
+var _cooldown_total: float = 0.0
 var _attack_remaining: float = 0.0
 var _window_remaining: float = 0.0
 var _invulnerable_remaining: float = 0.0
@@ -45,6 +52,7 @@ var _regen_delay_remaining: float = 0.0
 func _init(body: Player, starting_weapon: Weapon = null) -> void:
 	player = body
 	weapon = starting_weapon if starting_weapon != null else WeaponCatalog.default_weapon()
+	unarmed = WeaponCatalog.unarmed()
 
 
 var is_attacking: bool:
@@ -67,12 +75,24 @@ var is_stunned: bool:
 		return _stun_remaining > 0.0
 
 
+## Estadísticas de quien pelea. `DamageRules` las busca para leer la defensa, de
+## modo que el cuerpo de combate del jugador sirve como objetivo válido.
+var stats: CharacterStats:
+	get:
+		return null if player == null else player.stats
+
+
+var is_dead: bool:
+	get:
+		return player == null or player.is_dead
+
+
 ## Progreso del cooldown, de 0 (listo) a 1 (recién golpeado). Para la UI.
 var cooldown_ratio: float:
 	get:
-		if weapon == null or weapon.attack_cooldown <= 0.0:
+		if _cooldown_total <= 0.0:
 			return 0.0
-		return clampf(_cooldown_remaining / weapon.attack_cooldown, 0.0, 1.0)
+		return clampf(_cooldown_remaining / _cooldown_total, 0.0, 1.0)
 
 
 ## ¿Puede iniciar un golpe ahora mismo? No consume nada: solo consulta.
@@ -86,7 +106,8 @@ func can_attack() -> bool:
 func rejection_reason() -> StringName:
 	if player == null or player.is_dead:
 		return REASON_DEAD
-	if weapon == null or not weapon.can_attack():
+	var active := active_weapon(false)
+	if active == null or not active.can_attack():
 		return REASON_BROKEN
 	if is_attacking:
 		return REASON_BUSY
@@ -94,9 +115,18 @@ func rejection_reason() -> StringName:
 		return REASON_STUNNED
 	if _cooldown_remaining > 0.0:
 		return REASON_COOLDOWN
-	if not player.has_stamina(weapon.stamina_cost):
+	if not player.has_stamina(active.stamina_cost):
 		return REASON_NO_STAMINA
 	return &""
+
+
+## El arma con la que se va a pegar: la equipada, o los puños si se pide sin arma.
+## `try_attack()` es quien llama a esto, así que durante un golpe siempre devuelve
+## el arma que ya está en la mano y no vuelve a cambiar a mitad de animación.
+func active_weapon(wants_unarmed: bool) -> Weapon:
+	if wants_unarmed and unarmed != null:
+		return unarmed
+	return weapon
 
 
 ## Inicia un golpe. Devuelve `true` si sale.
@@ -104,17 +134,23 @@ func rejection_reason() -> StringName:
 ## Paga stamina, entra en ATTACKING y abre la ventana de hitbox durante una
 ## fracción del cooldown. La hitbox la enciende Presentation con la señal
 ## `attack_started`.
-func try_attack(direction: Vector2 = Vector2.DOWN) -> bool:
+##
+## `unarmed = true` pega a puños sin tocar el arma equipada: es la vía del
+## combate cuerpo a cuerpo sin arma. Los dos caminos comparten exactamente las
+## mismas reglas, así que no hay dos versiones del combate que mantener.
+func try_attack(direction: Vector2 = Vector2.DOWN, unarmed: bool = false) -> bool:
 	var reason := rejection_reason()
 	if not reason.is_empty():
 		attack_rejected.emit(reason)
 		return false
+	var active := active_weapon(unarmed)
 
-	player.spend_stamina(weapon.stamina_cost)
+	player.spend_stamina(active.stamina_cost)
 	_regen_delay_remaining = GameConfig.STAMINA_REGEN_DELAY
-	_cooldown_remaining = weapon.attack_cooldown
+	_cooldown_remaining = active.attack_cooldown
+	_cooldown_total = active.attack_cooldown
 	_attack_remaining = GameConfig.ATTACK_RECOVERY
-	_window_remaining = weapon.attack_cooldown * GameConfig.HITBOX_ACTIVE_RATIO
+	_window_remaining = active.attack_cooldown * GameConfig.HITBOX_ACTIVE_RATIO
 
 	player.direction = direction
 	if not player.transition_to(PlayerState.Kind.ATTACKING):
@@ -126,7 +162,7 @@ func try_attack(direction: Vector2 = Vector2.DOWN) -> bool:
 			"MeleeCombat"
 		)
 
-	attack_started.emit(weapon, direction, _window_remaining)
+	attack_started.emit(active, direction, _window_remaining)
 	return true
 
 
@@ -134,8 +170,14 @@ func try_attack(direction: Vector2 = Vector2.DOWN) -> bool:
 ##
 ## Recibe objetos de dominio, no nodos: la física solo decide a quién ha tocado la
 ## hitbox, nunca cuánto daño se le hace. Devuelve cuántos han recibido daño.
-func strike(targets: Array) -> int:
+##
+## El daño usa el arma del golpe en curso, no `weapon`: si el último golpe fue a
+## puños, lo que se aplica son los puños.
+func strike(targets: Array, used_unarmed: bool = false) -> int:
 	if not is_window_open or weapon == null:
+		return 0
+	var active := active_weapon(used_unarmed)
+	if active == null:
 		return 0
 	var hits := 0
 	for target in targets:
@@ -143,7 +185,7 @@ func strike(targets: Array) -> int:
 			continue
 		var damageable := target as Object
 		var defense := DamageRules.defense_of(damageable)
-		var dealt := float(damageable.call(&"take_damage", weapon.damage_against(defense)))
+		var dealt := float(damageable.call(&"take_damage", active.damage_against(defense)))
 		if dealt > 0.0:
 			hits += 1
 			target_hit.emit(damageable, dealt)
@@ -163,6 +205,16 @@ func receive_damage(raw_damage: float, source: Object = null) -> float:
 	apply_stun()
 	damaged.emit(dealt, source)
 	return dealt
+
+
+## La misma entrada de daño, con el nombre que espera `DamageRules`.
+##
+## Existe para que el cuerpo de combate del jugador sea un objetivo válido tal
+## cual: un NPC no debería conocer `Player` ni saltarse la invulnerabilidad
+## llamando a `take_damage` directamente. Pedirle daño a `MeleeCombat` es lo que
+## hace que un enemigo respete la ventana de invulnerabilidad y el aturdimiento.
+func take_damage(amount: float) -> float:
+	return receive_damage(amount, null)
 
 
 ## Activa la invulnerabilidad temporal (sección 9).

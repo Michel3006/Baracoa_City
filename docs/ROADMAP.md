@@ -29,22 +29,32 @@ Base terminada:
 - [x] Jugador provisional con movimiento, orientación y colisiones.
 - [x] Dominio de vida, daño, muerte y reaparición.
 - [x] Máquina de estados con transiciones validadas.
-- [x] Animaciones de caminar (4 direcciones) y pose de golpe, dibujadas a código.
+- [x] Sprites del pack (Ninja Adventure, Pixel-boy, CC0): jugador y cuatro tipos
+      de enemigo, con ciclo de paso en cuatro orientaciones y pose de golpe.
 - [x] Combate cuerpo a cuerpo: rango, cooldown, daño, objetivo e invulnerabilidad.
 - [x] Armas: piedra y cuchillo, con durabilidad y desgaste.
-- [x] Tests unitarios headless del dominio, del combate y de la integridad de
-      scripts (61 pruebas).
+- [x] Combate sin arma: puños siempre disponibles, con reglas propias y sin
+      des-equipar lo que se lleva en la mano.
+- [x] Enemigos: seis en la zona, con IA de reposo, deambular, perseguir, atacar,
+      huir y morir; solo uno persigue a la vez.
+- [x] El enemigo devuelve el golpe: daño, cooldown, invulnerabilidad y stun.
+- [x] HUD de barras e icono de arma, sin texto (la fuente del sistema sale
+      borrosa a 384x216).
+- [x] Muerte y reaparición jugables, con tinte de pantalla y botón de revivir.
+- [x] Tests unitarios headless del dominio, del combate, de los enemigos, de los
+      sprites y de la integridad de scripts (110 pruebas).
 - [x] Tests de integración con física real: colisiones y sincronía
       dominio/vista (6 pruebas).
-- [x] Tests de integración de combate con la hitbox real (9 pruebas).
+- [x] Tests de integración de combate con la hitbox real (11 pruebas).
+- [x] Tests de integración de enemigos: IA, golpe de ida y vuelta, muerte y
+      reaparición (18 pruebas).
 
 Pendiente:
 
 - [ ] Inventario con capacidad y equipar.
 - [ ] Objetos genéricos con tipo y apilado.
-- [ ] Un NPC con comportamiento sencillo.
-- [ ] HUD: vida, stamina, inventario.
-- [ ] Muerte y reaparición jugables.
+- [ ] Barra de golpe en el HUD.
+- [ ] Feedback visual cuando el enemigo golpea: hoy no sale arco ni destello.
 
 ## Fase 2 — Multijugador
 

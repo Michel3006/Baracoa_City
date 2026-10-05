@@ -11,12 +11,19 @@ realidad.
 | Acción | Teclas |
 | --- | --- |
 | Mover | `WASD` o flechas |
-| Golpear | `Espacio` o clic izquierdo |
+| Golpear con el arma | `Espacio` o clic izquierdo |
+| Golpear a puños | `F` o clic derecho |
+| Reaparecer | `E` (solo tras morir, pasado el retraso) |
 | Cerrar el juego | `Esc` |
 
 Las acciones de entrada están declaradas en `project.godot` con nombres estables
-(`move_up`, `move_down`, `move_left`, `move_right`) para que reasignarlas no
-afecte al código.
+(`move_up`, `move_down`, `move_left`, `move_right`, `attack`, `attack_unarmed`,
+`interact`) para que reasignarlas no afecte al código.
+
+Las dos formas de golpear son independientes a propósito. Se puede pegar a puños
+con algo en la mano: el golpe desarmado **no des-equipa** el arma, usa su propio
+alcance, daño, cooldown y stamina, y no gasta durabilidad. Lo único que cambia al
+mirar la pantalla es que a puños no se dibuja ni el arma ni el arco del golpe.
 
 ## 2. Movimiento
 
@@ -33,6 +40,11 @@ El jugador mira en una de cuatro direcciones: arriba, abajo, izquierda o
 derecha. La decide el eje dominante de la intención de movimiento y se comunica
 por señal, de modo que las animaciones futures la consuman sin conocer el
 movimiento.
+
+Cada orientación tiene su fila en la hoja de sprites, y el golpe no cambia de
+fila: la animación de golpe solo existe mirando al frente y se refleja en
+horizontal cuando el actor va de lado. Ver la sección 9 de `ARCHITECTURE.md`,
+que explica también el caso de las dos filas laterales especulares.
 
 `MovementController.block_for(segundos)` inmoviliza al jugador. Lo llama el
 presentador cuando `MeleeCombat` avisa de un aturdimiento, así que el jugador no
@@ -76,8 +88,13 @@ Vida inicial: 100 (`GameConfig.PLAYER_MAX_HEALTH`).
 
 `Player.respawn_at(posicion)` devuelve al jugador a IDLE con la vida y la stamina
 llenas. El caso de uso es `GameSession.respawn()`, que además elige el punto de
-reaparición. Aún no hay interfaz para invocarla: falta HUD y detección de
-"caíste fuera del mundo". Ver §8.
+reaparición, y el botón está cableado: `RespawnInput` lee `E` (`interact`), pide la
+reaparición y `GameSession` decide si puede. Hay un retraso de
+`GameConfig.RESPAWN_DELAY` (1 s) entre morir y poder volver, para que no sea pulsar y
+aparecer.
+
+Mismo botón que `interact` a propósito: en la pantalla de muerte no hay nada con lo
+que interactuar, así que no obliga a aprender dos teclas.
 
 ## 5. Estados del jugador
 
@@ -135,22 +152,25 @@ el dominio y el decor solo mostrará el estado resultante.
 
 ## 8. Pendiente para completar el MVP
 
-- [x] **Animaciones**: el jugador se dibuja a código con cuatro orientaciones,
-      ciclo de paso, pose de golpe y parpadeo al aturdirse.
+- [x] **Animaciones**: el jugador se dibuja con la hoja de sprites del pack, en
+      cuatro orientaciones, con ciclo de paso, pose de golpe y parpadeo al aturdirse.
 - [x] **Combate**: golpe con distancia, cooldown, daño `max(1, ataque - defensa)`,
       detección de objetivo por hitbox e invulnerabilidad temporal.
 - [x] **Armas**: piedra y cuchillo, con durabilidad. La fórmula del daño vive en
       `DamageRules`, en el dominio, no en el arma.
+- [x] **Combate sin arma**: se puede pegar a puños en cualquier momento, con reglas
+      propias y sin des-equipar lo que se lleva en la mano.
+- [x] **NPC**: seis enemigos con `stats`, `state`, `position` y `behavior`, y los
+      estados IDLE / WANDER / CHASE / ATTACK / FLEE / DEAD. Ver §8bis.
+- [x] **HUD**: vida, stamina e icono del arma, todo dibujado. La barra de golpe y el
+      inventario no están.
+- [x] **Muerte y reaparición jugables**: morir bloquea el movimiento, tiñe la
+      pantalla y `E` reaparece tras el retraso.
 - [ ] **Inventario**: `add_item`, `remove_item`, `has_item`, `get_quantity`,
       `use_item`, `equip_item`, `unequip_item`, con capacidad inicial de 20.
 - [ ] **Objetos**: definición genérica con `type`, `stackable` y `max_stack`,
       y la taxonomía WEAPON / CONSUMABLE / MATERIAL / QUEST / CURRENCY /
       CLOTHING / TOOL / MISC.
-- [ ] **NPC**: al menos uno, con `stats`, `state`, `position` y `behavior`, y
-      estados IDLE / WANDER / CHASE / ATTACK / FLEE / DEAD.
-- [ ] **HUD**: vida, stamina, inventario.
-- [ ] **Muerte y reaparición jugables**: hoy la reaparición existe como caso de
-      uso pero no hay forma de invocarla desde el juego.
 
 ## 8bis. Combate cuerpo a cuerpo
 
@@ -179,14 +199,76 @@ Reglas vigentes:
 
 | arma | daño | alcance | cooldown | stamina | durabilidad |
 | --- | --- | --- | --- | --- | --- |
+| Puños | 3 | 12 px | 0.30 s | 2 | no se rompe |
 | Piedra | 5 | 20 px | 0.45 s | 4 | 40 |
 | Cuchillo | 9 | 15 px | 0.28 s | 6 | 60 |
 
 El cuchillo pega más y más rápido, pero llega menos lejos y cansa más: es el
-arma de combate cercano, la piedra el arma de confianza.
+arma de combate cercano, la piedra el arma de confianza. Los puños son siempre la
+peor opción en daño, así que hay motivo para llevar algo en la mano.
 
 Un arma sin `max_durability` no se rompe nunca. Cuando la durabilidad llega a 0
 el arma `is_broken` y `can_attack()` es `false`.
+
+Los puños son un "arma" degenerada (`WeaponCatalog.UNARMED`): sin textura, sin
+durabilidad. Así las reglas del combate están en un solo sitio y el caso de "pegar
+sin arma" es otro valor de los mismos parámetros, no una ruta aparte con sus propias
+condiciones.
+
+## 8ter. Los enemigos
+
+Seis enemigos de cuatro tipos del pack, con tres débiles y tres duros:
+
+| tipo | vida | daño | alcance | velocidad |
+| --- | --- | --- | --- | --- |
+| Limo, araña | 24 | 4 | 13 px | lenta |
+| Búho, lagarto | 40 | 8 | 16 px | rápida |
+
+Cómo se comportan:
+
+- **Solo uno persigue a la vez**, el más cercano y solo si el jugador ha entrado en
+  su radio de detección (70 px). Con seis persiguiendo a la vez el combate deja de
+  ser legible.
+- El perseguidor se va a su casa cuando el jugador se aleja más de 130 px (la
+  correa), para que la zona siga teniendo enemigos y no se vacíe.
+- Por debajo del 25 % de vida **huyen** en vez de seguir peleando.
+- Al recibir daño se stun 0,2 s y ganan 0,35 s de invulnerabilidad, para que dos
+  enemigos no peguen en el mismo frame.
+- Pasean por su zona cuando están en reposo, más despacio de lo que persiguen:
+  correr sin motivo delata que es un enemigo.
+
+Los estados están en un grafo explícito (`NpcState._ALLOWED`) y solo se transiciona
+con `NpcState.transition_to()`. Ojo: el grafo inicialmente no permitía pasar de IDLE o
+WANDER a ATTACK, así que un enemigo en reposo nunca podía pegar. Está arreglado, y
+hay un caso que lo fija (`_attack_from_rest`).
+
+Dos cosas que no están y conviene saber:
+
+- Los enemigos del pack **no tienen fila de golpe propia**: reutilizan la pose de
+  frente, así que de lado el fotograma no encaja del todo.
+- Cuando un enemigo golpea **no hay feedback visual**: no sale arco ni destello,
+  solo baja la barra de vida. El arco del jugador sí sale y se borra solo.
+
+## 8quater. El HUD
+
+El HUD es todo dibujo, **sin una sola letra**. La fuente del sistema sale borrosa a
+384x216 y rompería el pixel art, así que las barras se pintan con `draw_rect` y el
+icono del arma es el propio sprite del arma. El pack trae temas de madera, no el
+`ThemeRed` del que salen los nueve-patch de Godot, así que tampoco hay panel.
+
+| elemento | qué muestra |
+| --- | --- |
+| barra de vida | rojo sobre fondo oscuro, se vacía hacia la derecha |
+| barra de stamina | azul, y se vacía mientras más rápido se recupera |
+| icono del arma | el sprite del arma equipada; desaparece a puños |
+| pantalla de muerte | tinte rojo sobre todo |
+
+La barra de golpe no llegó a existir: habría que conectarla a `cooldown_ratio` de
+`MeleeCombat` y sigue pendiente.
+
+El HUD va en un `CanvasLayer` propio, así que no le afecta ni la cámara ni el zoom.
+Consume el caso de uso por señales: no lee `Health` directamente ni sabe qué es un
+jugador.
 
 ## 9. Qué NO debe colarse en el MVP
 

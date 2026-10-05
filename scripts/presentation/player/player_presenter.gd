@@ -10,9 +10,14 @@ extends Node
 ##
 ## Dependencias: presentation -> application
 
-## Acción de entrada del golpe. Se lee aquí y no en el dominio porque el teclado
-## es cosa del dispositivo.
+## Acción de entrada del golpe con arma. Se lee aquí y no en el dominio porque el
+## teclado es cosa del dispositivo.
 const ACTION_ATTACK := &"attack"
+
+## Acción de entrada del golpe a puños. Son dos teclas distintas y no un modificador
+## del mismo golpe: es la diferencia entre "ataco con lo que llevo" y "ataco con las
+## manos", y el caso de uso necesita saber cuál de las dos es.
+const ACTION_ATTACK_UNARMED := &"attack_unarmed"
 
 var _view: PlayerView = null
 var _movement: MovementController = null
@@ -21,6 +26,15 @@ var _combat: MeleeCombat = null
 ## Cuerpos ya golpeados en el swing actual, para no machacar al mismo objetivo
 ## mientras la hitbox sigue encendida.
 var _struck: Array[Object] = []
+
+## Si el golpe en curso se dio a puños. Lo consulta `MeleeCombat.strike()` para
+## aplicar el daño del arma correcta.
+var _struck_unarmed: bool = false
+
+
+## Nodo donde se sueltan los efectos de golpe. Puede ser nulo: los tests no montan
+## mundo, y una presentación que necesita un nodo para poder probarse está mal.
+var _fx_parent: Node2D = null
 
 
 func setup(view: PlayerView, movement: MovementController, combat: MeleeCombat = null) -> void:
@@ -39,8 +53,19 @@ func setup(view: PlayerView, movement: MovementController, combat: MeleeCombat =
 		_combat.weapon_changed.connect(_on_weapon_changed)
 		_combat.stun_applied.connect(_on_stun_applied)
 		_combat.invulnerability_changed.connect(_on_invulnerability_changed)
+		# Los enemigos golpean a este nodo a través de la capa PLAYER, así que
+		# necesita saber a quién avisa. El objetivo es el cuerpo de combate y no el
+		# `Player` del dominio: así el daño respeta la invulnerabilidad.
+		if _view != null:
+			_view.combat_target = _combat
 		if _view != null:
 			_view.set_weapon(_combat.weapon)
+
+
+## Dónde se sueltan los efectos de golpe. Lo inyecta la escena del mundo para no
+## tener que adivinar el padre del nodo.
+func set_fx_parent(node: Node2D) -> void:
+	_fx_parent = node
 
 
 func _physics_process(delta: float) -> void:
@@ -49,9 +74,20 @@ func _physics_process(delta: float) -> void:
 	if _combat == null:
 		return
 	_combat.advance(delta)
-	if Input.is_action_just_pressed(ACTION_ATTACK):
-		_combat.try_attack(_facing())
+	_read_attack_input()
 	_strike_visible_targets()
+
+
+## Traduce las dos teclas de golpe a una llamada del caso de uso.
+##
+## Si el jugador pulsa las dos en el mismo frame manda el golpe con arma: es el que
+## se ve en la mano, y el de puños es el que se usa cuando no hay nada mejor.
+func _read_attack_input() -> void:
+	if Input.is_action_just_pressed(ACTION_ATTACK):
+		_combat.try_attack(_facing(), false)
+		return
+	if Input.is_action_just_pressed(ACTION_ATTACK_UNARMED):
+		_combat.try_attack(_facing(), true)
 
 
 func _facing() -> Vector2:
@@ -60,6 +96,12 @@ func _facing() -> Vector2:
 	if _view != null:
 		return _view.facing()
 	return Vector2.DOWN
+
+
+## ¿Está el jugador sin vida? Lo consulta la escena al teleportarlo para decidir si
+## la vista tiene que revivir.
+func is_dead() -> bool:
+	return _combat != null and _combat.is_dead
 
 
 ## Encuentra lo que la hitbox tiene encima y pasa el objetivo al caso de uso.
@@ -74,7 +116,7 @@ func _strike_visible_targets() -> void:
 		if target == null or target in _struck:
 			continue
 		_struck.append(target)
-		_combat.strike([target])
+		_combat.strike([target], _struck_unarmed)
 
 
 func _domain_target_of(body: Node) -> Object:
@@ -96,9 +138,26 @@ func _on_direction_changed(facing: Vector2) -> void:
 
 func _on_attack_started(weapon: Weapon, direction: Vector2, _window: float) -> void:
 	_struck.clear()
+	# El golpe en curso puede ser a puños aunque el arma equipada siga en la mano.
+	_struck_unarmed = WeaponCatalog.is_unarmed(weapon)
 	if _view != null:
 		_view.set_facing(direction)
 		_view.begin_attack(weapon)
+	# A puños no sale arco: no hay nada que corte el aire. El arco es de la hoja del
+	# arma, así que con las manos vacías lo único que se ve es la animación de golpe
+	# del personaje, que es justo la diferencia que se pidió entre las dos formas de
+	# pegar.
+	if not _struck_unarmed:
+		_spawn_slash(direction)
+
+
+## Suelta el efecto de golpe en la mano, no en el centro del cuerpo: es donde se ve
+## el arco de verdad.
+func _spawn_slash(direction: Vector2) -> void:
+	if _fx_parent == null or _view == null:
+		return
+	var origin := _view.global_position + direction * GameConfig.FX_ORIGIN_OFFSET
+	SlashEffect.spawn(_fx_parent, direction, origin)
 
 
 func _on_attack_window_closed() -> void:

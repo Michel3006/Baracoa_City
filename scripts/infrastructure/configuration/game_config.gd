@@ -43,6 +43,17 @@ const HITBOX_FORWARD_RATIO := 0.55
 const PLAYER_STAMINA_REGEN := 18.0
 const STAMINA_REGEN_DELAY := 0.4
 
+# --- Combate sin arma (puños) ---
+## El jugador siempre puede golpear a puños, tenga o no arma en la mano. Es un
+## "arma" degenerada: sin textura, sin durabilidad y con el alcance de un brazo.
+const WEAPON_UNARMED_NAME := "Puños"
+const WEAPON_UNARMED_DAMAGE := 3.0
+const WEAPON_UNARMED_RANGE := 12.0
+const WEAPON_UNARMED_COOLDOWN := 0.3
+const WEAPON_UNARMED_STAMINA := 2.0
+## Los puños no se rompen: `max_durability` a 0 desactiva el desgaste.
+const WEAPON_UNARMED_DURABILITY := 0
+
 # --- Armas (sección 7: solo piedra y cuchillo en el MVP) ---
 const WEAPON_STONE_NAME := "Piedra"
 const WEAPON_STONE_DAMAGE := 5.0
@@ -61,6 +72,110 @@ const WEAPON_KNIFE_DURABILITY := 60
 # --- Mundo ---
 const WORLD_ZONE_SIZE := Vector2i(64, 64)
 const PLAYER_SPAWN := Vector2(200, 200)
+
+# --- Presentacion de actores (seccion 25: los placeholders dan paso a sprites) ---
+## Lado de un frame de personaje. El pack de sprites usa 16x16, el mismo tamano
+## que el tile del mapa, asi que un personaje ocupa exactamente un tile de ancho.
+const ACTOR_FRAME_SIZE := 16
+## Filas de una hoja de caminar: abajo, izquierda, arriba, derecha.
+##
+## OJO: es la unica convencion del pack que no se puede deducir de los pixeles, y
+## las hojas laterales son imagenes especulares la una de la otra. Si al jugar el
+## personaje lateral mira al reves, basta con intercambiar `ACTOR_ROW_SIDE` y
+## `ACTOR_ROW_SIDE_MIRRORED`: no hay que tocar ningun otro archivo.
+const ACTOR_ROW_DOWN := 0
+const ACTOR_ROW_SIDE := 1
+const ACTOR_ROW_UP := 2
+const ACTOR_ROW_SIDE_MIRRORED := 3
+## Fotogramas por ciclo de caminata, y segundos entre cada uno.
+const ACTOR_WALK_FRAMES := 4
+const ACTOR_WALK_FPS := 8.0
+## Fotogramas por ciclo de golpe y segundos entre cada uno.
+##
+## Los cuatro fotogramas tienen que caber dentro de `ATTACK_RECOVERY`, que es lo que
+## el actor está bloqueado después de pegar. A 14 fps el arco duraba 0.29 s contra los
+## 0.22 s de recuperación, así que el último fotograma nunca se veía. Si alguna vez se
+## toca `ATTACK_RECOVERY` hay que revisar esto: hay un test que lo comprueba.
+const ACTOR_ATTACK_FRAMES := 4
+const ACTOR_ATTACK_FPS := 20.0
+## Desplazamiento en vertical del sprite respecto a los pies, en pixeles. El
+## origen del nodo esta en los pies: el cuerpo se dibuja hacia arriba.
+const ACTOR_SPRITE_OFFSET := Vector2(0.0, -8.0)
+## Hojas de efecto de golpe: ocho fotogramas en una sola fila.
+##
+## OJO: el fotograma es 16 de ancho por 32 de ALTO, no 16x16. Un arco de espada es mas
+## alto que ancho, y la hoja son 128x32. Si se recortara en 16x16 saldrian 8x2 celdas
+## y el efecto recorreria la fila de arriba, que esta casi vacia: el golpe se veria
+## parpadear en vez de dibujarse. Hay un test que comprueba la rejilla.
+const FX_FRAME_WIDTH := 16
+const FX_FRAME_HEIGHT := 32
+const FX_FRAMES := 8
+const FX_FPS := 18.0
+## Distancia al cuerpo a la que aparece el efecto de golpe. A cero el arco sale
+## detrás del personaje y no se ve.
+const FX_ORIGIN_OFFSET := 6.0
+## Z del efecto de golpe: por encima del mundo y del NPC, por debajo del HUD.
+const FX_Z_INDEX := 8
+
+# --- NPC (seccion 18) ---
+## Cada cuanto se reparte el objetivo entre los enemigos. Solo reparta, no mueve ningun
+## reloj, asi que puede ir a su aire sin tocar el ritmo de la IA.
+##
+## No puede depender solo de que el jugador se mueva: quieto en mitad de un nido de
+## enemigos se quedaba sin que nadie lo persiguiera, porque el reparto era una
+## consecuencia del movimiento. Diez veces por segundo basta: la IA vuelve a mirar su
+## radio de deteccion en cada fotograma de fisica.
+const NPC_TARGET_REFRESH := 0.1
+## Numero de enemigos que aparecen en la zona de prueba.
+const NPC_SPAWN_COUNT := 6
+## Distancia a la que un NPC se da cuenta del jugador.
+const NPC_AGGRO_RADIUS := 70.0
+## Distancia a la que un NPC deja de perseguirlo (vuelve a lo que hacía).
+const NPC_LEASH_RADIUS := 130.0
+## Radio deambulacion en reposo, y segundos entre cambios de destino.
+const NPC_WANDER_RADIUS := 28.0
+const NPC_WANDER_INTERVAL := 2.5
+## Los NPC pasean mas despacio de lo que persiguen: correr sin motivo delata que
+## es un enemigo y rompe la lectura de la escena.
+const NPC_WANDER_SPEED_RATIO := 0.45
+## Angulo que gira el destino de paseo en cada salto. El numero dorado reparte los
+## puntos mejor que un aleatorio, y al ser fijo da siempre el mismo mapa.
+const NPC_WANDER_GOLDEN_ANGLE := 2.39996
+## Por debajo de esta proporcion de vida el NPC huye en vez de seguir peleando.
+const NPC_FLEE_HEALTH_RATIO := 0.25
+## Invulnerabilidad tras recibir un golpe: evita que dos NPCs peguen en el mismo
+## frame y que el jugador muera de un solo golpe.
+const NPC_INVULNERABILITY_TIME := 0.35
+## Aturdimiento del NPC al recibir dano.
+const NPC_HURT_STUN_TIME := 0.2
+## Estatico de danio y alcance del golpe cuerpo a cuerpo de un NPC debil.
+const NPC_WEAK_DAMAGE := 4.0
+const NPC_WEAK_HEALTH := 24.0
+const NPC_WEAK_RANGE := 13.0
+const NPC_WEAK_COOLDOWN := 0.9
+const NPC_WEAK_SPEED := 26.0
+const NPC_WEAK_DEFENSE := 0.0
+## Lo mismo, para un enemigo tougher.
+const NPC_STRONG_DAMAGE := 8.0
+const NPC_STRONG_HEALTH := 48.0
+const NPC_STRONG_RANGE := 15.0
+const NPC_STRONG_COOLDOWN := 1.2
+const NPC_STRONG_SPEED := 34.0
+const NPC_STRONG_DEFENSE := 2.0
+
+# --- HUD (seccion 8) ---
+## Tamano de las barras de vida y stamina, y margenes respecto a la pantalla.
+const HUD_BAR_SIZE := Vector2(48, 4)
+const HUD_BAR_MARGIN := Vector2(4, 4)
+const HUD_BAR_GAP := 2
+## Alto del icono del arma y tinte de pantalla mientras el jugador esta sin vida.
+const HUD_WEAPON_SIZE := Vector2(6, 11)
+const HUD_DOWN_TINT := 0.28
+
+# --- Muerte y reaparición (sección 8) ---
+## Tiempo tras morir hasta que el botón de revivir hace algo. Sin espera, un botón
+## mantenido devolvería la vida al instante y se perdería la lectura de qué pasó.
+const RESPAWN_DELAY := 1.0
 
 # --- Networking (Fase 2) ---
 const SERVER_PORT := 27015

@@ -15,6 +15,9 @@ signal health_changed(current: float, maximum: float)
 signal stamina_changed(current: float, maximum: float)
 signal player_died()
 signal player_respawned(position: Vector2)
+## Pide reaparición. Lo emite el caso de uso, no la entrada: el juego decide cuándo y
+## la tecla solo lo pide.
+signal respawn_requested()
 signal attack_started(weapon: Weapon, direction: Vector2, window: float)
 signal attack_finished()
 signal damage_dealt(target: Object, amount: float)
@@ -23,6 +26,12 @@ signal player_damaged(amount: float, source: Object)
 var player: Player
 var combat: MeleeCombat
 var view: MainWorldView = null
+var npcs: NpcDirector = null
+
+## Segundos que el juego espera antes de aceptar el pedido de reaparición tras morir.
+## Sin esto un botón mantenido resucita al instante y se pierde la lectura de qué ha
+## pasado.
+var _respawn_delay: float = 0.0
 
 ## Conexiones con el jugador. Se guardan para poder deshacerlas: conectar señales
 ## entre dos `RefCounted` crea un ciclo que Godot no recolecta, así que hay que
@@ -71,6 +80,7 @@ func _forward_stamina_changed(current: float, maximum: float) -> void:
 
 
 func _forward_died() -> void:
+	_respawn_delay = GameConfig.RESPAWN_DELAY
 	player_died.emit()
 
 
@@ -124,6 +134,17 @@ func bind_view(world_view: MainWorldView) -> void:
 	view = world_view
 
 
+## Mueve el reloj de la sesión.
+##
+## Solo lleva la cuenta del tiempo que pasa hasta que se puede revivir. Va aparte de
+## `apply_motion()` a propósito: el movimiento es un resultado de la física, que
+## puede no venir (el jugador quieto) y en los tests se llama a mano sin `delta`.
+func advance(delta: float) -> void:
+	if delta <= 0.0 or _respawn_delay <= 0.0:
+		return
+	_respawn_delay = maxf(0.0, _respawn_delay - delta)
+
+
 ## Traduce el desplazamiento resuelto por la física al modelo de dominio.
 ##
 ## Es el único punto donde la posición real del jugador entra en el dominio. En
@@ -147,4 +168,30 @@ func _sync_motion_state(moved: Vector2) -> void:
 ## la máquina de estados solo refleja el nuevo estado.
 func respawn(spawn_position: Vector2 = GameConfig.PLAYER_SPAWN) -> void:
 	player.respawn_at(spawn_position)
+	teleport_to(spawn_position)
 	GameLogger.info("Jugador reapareció en %s" % spawn_position, "GameSession")
+
+
+## ¿Se puede pedir la reaparición ahora mismo? Solo si el jugador está muerto y ya ha
+## pasado el tiempo de espera: en cualquier otro caso el pedido se ignora, que es lo
+## que evita que un botón mantenido devuelva vida.
+func can_respawn() -> bool:
+	return player != null and player.is_dead and _respawn_delay <= 0.0
+
+
+## Crea el director de NPC y llena la zona. Lo llama la capa Application al ensamblar
+## el mundo; el director no sabe nada de vistas.
+func setup_npcs(limit: int = -1) -> NpcDirector:
+	npcs = NpcDirector.new()
+	npcs.populate(NpcSpawnTable.demo(), limit)
+	return npcs
+
+
+## Pide la reaparición. Es el punto de entrada del botón de revivir: el juego decide
+## cuándo y dónde, y esta función solo lo hace explícito para poder probarlo.
+func request_respawn(spawn_position: Vector2 = GameConfig.PLAYER_SPAWN) -> bool:
+	if not can_respawn():
+		return false
+	respawn_requested.emit()
+	respawn(spawn_position)
+	return true

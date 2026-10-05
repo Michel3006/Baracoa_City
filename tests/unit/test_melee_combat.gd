@@ -41,6 +41,11 @@ func register() -> Array:
 		["un arma rota no permite atacar", _broken_weapon_blocks],
 		["cambiar de arma cambia el alcance", _equip_changes_range],
 		["un golpe tras cooldown vuelve a entrar", _recovers_after_cooldown],
+		["pegar a puños no toca el arma equipada", _unarmed_keeps_weapon],
+		["el golpe a puños usa las reglas de los puños", _unarmed_uses_own_rules],
+		["el golpe a puños pega menos que con arma", _unarmed_hits_softer],
+		["el golpe a puños también se bloquea", _unarmed_is_blocked_too],
+		["la barra de golpe mide contra el golpe en curso", _cooldown_ratio_follows_strike],
 	]
 
 
@@ -216,3 +221,110 @@ func _recovers_after_cooldown(ctx: ScriptTestContext) -> void:
 	combat.advance(GameConfig.WEAPON_STONE_COOLDOWN + GameConfig.ATTACK_RECOVERY)
 	ctx.check(combat.can_attack(), "tras el cooldown se puede volver a golpear")
 	ctx.check(combat.try_attack(), "y el golpe sale")
+
+
+## Pegar a puños tiene que ser una forma de golpear, no cambiar el arma de la mano.
+## Si el golpe a puños des-equipara lo que llevas, el jugador pierde su arma cada vez
+## que le da un puñetazo, y eso no es "combate sin arma" sino perder el equipo.
+func _unarmed_keeps_weapon(ctx: ScriptTestContext) -> void:
+	var combat := _combat(WeaponCatalog.KNIFE)
+	var knife := combat.weapon
+
+	ctx.check(combat.try_attack(Vector2.RIGHT, true), "el golpe a puños sale")
+	ctx.check_equal(combat.weapon, knife, "el arma sigue siendo la de antes")
+	ctx.check_equal(combat.weapon.id, WeaponCatalog.KNIFE, "y no ha cambiado de id")
+	ctx.check(
+		WeaponCatalog.is_unarmed(combat.active_weapon(true)),
+		"pero el golpe en curso es a puños"
+	)
+	ctx.check(
+		not WeaponCatalog.is_unarmed(combat.active_weapon(false)),
+		"y con el interruptor apagado vuelve a ser el arma"
+	)
+
+
+## Los puños tienen su propio cooldown, su propia stamina y su propio alcance. Si
+## cogieran los del arma, serían un golpe mal etiquetado en vez de otra decisión.
+func _unarmed_uses_own_rules(ctx: ScriptTestContext) -> void:
+	var combat := _combat(WeaponCatalog.KNIFE)
+	var stamina_before := combat.player.stamina
+	# La ventana llega en la señal de aviso: es la forma de leerla sin abrir el caso de
+	# uso por dentro, que es justo lo que no debe hacer un test.
+	var windows: Array[float] = []
+	combat.attack_started.connect(
+		func(_weapon: Weapon, _direction: Vector2, window: float) -> void:
+			windows.append(window)
+	)
+
+	ctx.check(combat.try_attack(Vector2.RIGHT, true), "el golpe a puños sale")
+	ctx.check_equal(windows.size(), 1, "avisa del golpe")
+	ctx.check_almost_equal(
+		windows[0] if not windows.is_empty() else 0.0,
+		GameConfig.WEAPON_UNARMED_COOLDOWN * GameConfig.HITBOX_ACTIVE_RATIO,
+		"la ventana sale del cooldown de los puños, no del del cuchillo"
+	)
+	ctx.check_almost_equal(
+		combat.cooldown_ratio, 1.0, "el cooldown es el de los puños"
+	)
+	ctx.check_equal(
+		stamina_before - combat.player.stamina,
+		GameConfig.WEAPON_UNARMED_STAMINA,
+		"y la stamina es la de los puños"
+	)
+
+
+## Puños tienen que pegar menos que cualquier arma del MVP. Si no, no habría motivo
+## para llevar nada en la mano.
+func _unarmed_hits_softer(ctx: ScriptTestContext) -> void:
+	var target := Dummy.new(60.0, 0.0)
+	var combat := _combat(WeaponCatalog.KNIFE)
+	combat.try_attack(Vector2.RIGHT, true)
+	combat.strike([target], true)
+	var fists := 60.0 - target.health.current
+
+	var armed_combat := _combat(WeaponCatalog.KNIFE)
+	armed_combat.try_attack(Vector2.RIGHT)
+	armed_combat.strike([Dummy.new(60.0, 0.0)], false)
+	var with_knife := GameConfig.WEAPON_KNIFE_DAMAGE
+
+	ctx.check_equal(fists, GameConfig.WEAPON_UNARMED_DAMAGE, "el daño es el de los puños")
+	ctx.check(fists < with_knife, "y es menor que el del cuchillo")
+	ctx.check(
+		GameConfig.WEAPON_UNARMED_DAMAGE < GameConfig.WEAPON_STONE_DAMAGE,
+		"y menor que el de la piedra"
+	)
+
+
+## Las reglas del combate valen igual para las dos manos: un puñetazo con la stamina
+## agotada, en cooldown o sin arma rota tiene que rechazarse con el mismo motivo.
+func _unarmed_is_blocked_too(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	ctx.check(combat.try_attack(Vector2.RIGHT, true), "el primer puñetazo sale")
+
+	# En cooldown: el motivo es el del cooldown, no uno propio de los puños.
+	var reasons: Array[StringName] = []
+	combat.attack_rejected.connect(func(reason: StringName) -> void: reasons.append(reason))
+	ctx.check(not combat.try_attack(Vector2.RIGHT, true), "el segundo se rechaza")
+	ctx.check(
+		not reasons.is_empty() and reasons[0] != &"",
+		"y avisa de por qué: %s" % reasons[0]
+	)
+
+	# Agotado el cooldown y la stamina, también se rechaza.
+	combat.advance(GameConfig.WEAPON_UNARMED_COOLDOWN + GameConfig.ATTACK_RECOVERY)
+	combat.player.spend_stamina(combat.player.stamina)
+	ctx.check(not combat.try_attack(Vector2.RIGHT, true), "sin stamina tampoco")
+
+
+## La barra de golpe de la UI tiene que medir contra lo que se está usando ahora, no
+## contra el arma que puede llevarse en la mano: los puños recuperan antes.
+func _cooldown_ratio_follows_strike(ctx: ScriptTestContext) -> void:
+	var combat := _combat(WeaponCatalog.KNIFE)
+	ctx.check(combat.try_attack(Vector2.RIGHT, true), "puñetazo")
+	ctx.check_almost_equal(
+		combat.cooldown_ratio, 1.0, "al empezar el golpe la barra está llena"
+	)
+	combat.advance(GameConfig.WEAPON_UNARMED_COOLDOWN * 0.5)
+	ctx.check_almost_equal(
+		combat.cooldown_ratio, 0.5, "y baja con el cooldown de los puños"
+	)

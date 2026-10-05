@@ -12,19 +12,23 @@ la primera tarea concreta.
 
 ## Dónde estamos
 
-**Fase 1 (prototipo offline). Pasos 1 a 10 cerrados, combate y armas hechos.**
+**Fase 1 (prototipo offline). Pasos 1 a 10 cerrados, combate, enemigos y sprites
+hechos.**
 
 Última verificación, todo en verde:
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 61/61 pruebas correctas
+# RESULTADO: 110/110 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
 
 godot --headless --script res://tests/integration/combat_runner.gd
-# RESULTADO: 9/9 pruebas correctas
+# RESULTADO: 11/11 pruebas correctas
+
+godot --headless --script res://tests/integration/npc_combat_runner.gd
+# RESULTADO: 18/18 pruebas correctas
 ```
 
 Los pasos 1 a 10 de la sección 37:
@@ -67,8 +71,45 @@ De ahí las dos defensas que hay ahora:
 - `tests/integration/combat_runner.gd` prueba la cadena real (presentador ->
   hitbox -> daño). Desconectar el combate del presentador lo baja a 6/9.
 
-**Regla que sale de esto:** si unaSuite da error por consola, no está verde.
+**Regla que sale de esto:** si una suite da error por consola, no está verde.
 Mirar el log, no solo el `RESULTADO`.
+
+### El combate con enemigos estaba entero y no se veía
+
+Mismo género de fallo, y conviene conocerlo. Cuando se acabó el combate con armas
+había seis enemigos con IA, sprites, barras y golpe, todo con sus pruebas en verde.
+En el juego no pasaba nada. Cuatro cosas distintas, todas invisibles para los tests:
+
+1. El reparto de objetivo estaba atado a `move_performed`, así que un jugador quieto
+   no lo perseguía nadie. Se reparte ahora con un reloj propio
+   (`GameConfig.NPC_TARGET_REFRESH`) y también al reaparecer.
+2. Los enemigos estaban a 126 px del punto de aparición, muy por fuera del radio de
+   detección de 70 y fuera de lo que enseña la cámara (64 x 36 px). Se podía recorrer
+   el mapa entero sin ver un enemigo.
+3. Uno de los seis había nacido **dentro** de un edificio, en el tile (14, 25), y se
+   quedaba encajonado sin poder salir.
+4. El fotograma del efecto de golpe es de 16 x 32, no de 16 x 16. Recortado en
+   cuadrados, el arco se recorría por la fila de arriba de la hoja, que está casi
+   vacía: el golpe parpadeaba en blanco en vez de dibujarse.
+
+El 4 no lo encontró ningún test: salió de contar píxeles con un script aparte, porque
+una hoja mal recortada no da error, da el efecto equivocado. Los otros tres sí, pero
+solo con casos que miran lo que el jugador ve y no lo que el código devuelve:
+
+- `npc_combat_runner` comprueba que ningún enemigo nace encajonado, y que al aparecer
+  hay alguno dentro del rectángulo de la cámara y dentro de su radio de detección.
+- `test_actor_sprite` comprueba la rejilla de cada hoja y que el efecto de golpe tiene
+  ocho fotogramas en horizontal.
+
+**Regla que sale de esto:** una prueba que mira el valor que devuelve el código no
+comprueba que se vea. Para lo que el jugador ve hay que medir la pantalla.
+
+### La animación no actualizaba hasta que pasaba un ciclo entero
+
+`ActorSprite._process()` envolvía el acumulador y solo refrescaba el recorte cuando
+se cerraba un ciclo completo, así que los primeros 0,5 s de caminata salían con la
+misma pose. Lo encontró `test_actor_sprite` al comprobar que el ciclo pasa por los
+cuatro fotogramas.
 
 ## Qué falta, en orden
 
@@ -77,8 +118,8 @@ define el orden.
 
 ### 1. Inventario y objetos
 
-Lo siguiente. No existe nada de esto todavía: no hay `scripts/domain/inventory/`
-ni `scripts/domain/item/`.
+Lo siguiente, y lo único que falta de la Fase 1. No existe nada de esto todavía: no
+hay `scripts/domain/inventory/` ni `scripts/domain/item/`.
 
 - `Inventory` con `add_item`, `remove_item`, `has_item`, `get_quantity`,
   `use_item`, `equip_item`, `unequip_item` y capacidad
@@ -87,29 +128,38 @@ ni `scripts/domain/item/`.
   WEAPON / CONSUMABLE / MATERIAL / QUEST / CURRENCY / CLOTHING / TOOL / MISC. No
   hace falta implementar todos los tipos.
 - El inventario no debe saber nada de gráficos; la UI lo consulta.
-- `MeleeCombat.equip()` ya existe y es el gancho: no tocarlo para añadir
-  inventario.
+- `MeleeCombat.equip()` ya existe y es el gancho: no tocarlo para añadir inventario.
+  `WeaponCatalog.UNARMED` ya permite combatir sin nada en la mano.
 
-### 2. NPC
+### 2. Remates de lo que ya funciona
 
-Al menos uno, con `stats`, `state`, `position`, `behavior` y los estados IDLE /
-WANDER / CHASE / ATTACK / FLEE / DEAD. Sin IA avanzada. La capa de física `npc`
-ya está declarada.
+No bloquean nada, pero se notan al jugar:
 
-`Player` y `Health` ya son reutilizables por un NPC: `Health` no depende de nada
-de jugador.
+- **Los enemigos no dan feedback al pegar.** Cuando un NPC golpea al jugador no sale
+  arco ni destello: solo baja la barra de vida. El arco del jugador ya sale y se
+  borra solo, y hay un caso que lo comprueba.
+- **El aturdimiento no tiene lectura visual.** Se aplica (`_on_stun_applied`) pero no
+  se ve.
+- **La muerte no avisa con texto.** El HUD son barras dibujadas, sin letras, porque la
+  fuente del sistema sale borrosa a 384x216. Al morir solo se tiñe la pantalla de rojo.
+- **Los enemigos del pack no tienen fila de golpe propia**: reutilizan la pose de
+  frente, así que al atacar de lado el fotograma no encaja del todo. Está anotado en
+  `ActorVisualCatalog.attack_row_of`.
+- **La orientación del sprite lateral es una constante, no un hecho.** Las dos filas
+  laterales de las hojas son imágenes especulares la una de la otra, así que no se
+  puede deducir de los píxeles cuál es mirar a la izquierda y cuál a la derecha. Está
+  en `GameConfig.ACTOR_ROW_SIDE` y `ACTOR_ROW_SIDE_MIRRORED`: si al jugar el
+  personaje lateral va del revés, se intercambian esos dos números y no hay que tocar
+  ningún otro archivo.
+- **Un enemigo fuerte mata a un jugador quieto** en unos 15 s. Dentro de lo
+  razonable, pero no se ha ajustado jugando.
 
-El NPC tiene que ser un `CharacterBody2D`, ver la nota de `Area2D` más abajo.
-
-### 3. HUD y muerte jugable
-
-`GameSession.respawn()` existe pero no hay forma de invocarla desde el juego.
-Falta HUD (vida, stamina, inventario) y el ciclo morir y reaparecer.
-
-### 4. Tests de lo que se añada
+### 3. Tests de lo que se añada
 
 Los runners ya existen. Los unitarios no necesitan `SceneTree`; los que sí, van a
-`tests/integration/` con su propio runner.
+`tests/integration/` con su propio runner. Si un caso crea nodos, que tenga
+`teardown()`: el runner lo llama tras cada caso, y sin él Godot avisa de fugas al
+salir, que es un error por consola como cualquier otro.
 
 ## Reglas que no se negocian
 
@@ -130,14 +180,17 @@ Los runners ya existen. Los unitarios no necesitan `SceneTree`; los que sí, van
 ## Comandos
 
 ```bash
-# tests unitarios (61)
+# tests unitarios (110)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)
 godot --headless --script res://tests/integration/world_physics_runner.gd
 
-# tests de integracion de combate (9)
+# tests de integracion de combate (11)
 godot --headless --script res://tests/integration/combat_runner.gd
+
+# tests de integracion de NPC (18)
+godot --headless --script res://tests/integration/npc_combat_runner.gd
 
 # captura un frame: <salida> [frames] [x] [y] [zoom]
 godot --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 380 1
@@ -146,13 +199,18 @@ godot --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 380 1
 godot --headless --import
 ```
 
-Dos avisos sobre estos comandos:
+Tres avisos sobre estos comandos:
 
 - Tras clonar o cambiar `project.godot`, correr `--headless --import` **antes** de
   los tests. Sin el caché de clases globales, `class_name` no resuelve y el runner
   no compila.
 - El resultado se lee en el `RESULTADO` **y** en el log. Un `SCRIPT ERROR` por
   consola significa que algo está mal aunque el resultado sea verde.
+- **`screenshot.gd` no funciona en `--headless`.** El driver de render headless no
+  emite `frame_post_draw`, así que el script se queda esperando ahí y hay que
+  matarlo: no deja fichero ni mensaje. Sin `Xvfb` instalado en esta máquina no hay
+  forma de capturar la pantalla. Para revisar los sprites hay que leer las hojas
+  contando píxeles, no mirando una captura.
 
 ## Entorno
 
@@ -187,6 +245,13 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
   Los objetivos de golpeo (NPC) tienen que ser `CharacterBody2D`, que además es lo
   natural porque se mueven. `intersect_shape()` sí encuentra los estáticos: no
   fiarse de esa vía para diagnosticar hitboxes.
+- **Los sprites del pack no son cuadrados.** Los personajes son de 16x16, pero el
+  efecto de golpe es de 16 de ancho por 32 de alto, y la hoja son 128x32: ocho
+  fotogramas en una fila. Recortarla en 16x16 da ocho celdas por dos filas y el
+  efecto recorre la fila de arriba, que está casi vacía. `GameConfig` tiene
+  `ACTOR_FRAME_SIZE` y, aparte, `FX_FRAME_WIDTH` / `FX_FRAME_HEIGHT` por eso.
+- **La orientación de las hojas laterales no se puede deducir.** Ver la nota del
+  sprite lateral más arriba.
 - **Resolución 384x216**: 16:9 exacto, escala de ventana x3, tile de 16 px. Ojo:
   216 **no** es múltiplo de 16. No escribir tests que asuman lo contrario.
 - **Zoom de cámara 3**: la imagen guardada por `screenshot.gd` es de 384x216, y
