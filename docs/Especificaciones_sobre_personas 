@@ -1,0 +1,1412 @@
+# TAREA: MIGRAR PERSONAJES NINJA A PERSONAJES HUMANOS
+
+## 0. ROL QUE DEBES ASUMIR
+
+Actúa como un desarrollador senior especializado en Godot 4.x, arquitectura de videojuegos 2D, pixel art, sistemas de animación y refactorización segura de proyectos existentes.
+
+Tu trabajo NO consiste en crear un juego nuevo.
+
+Tu trabajo consiste en analizar el proyecto existente y modificar únicamente el sistema visual de los personajes para sustituir el personaje Ninja actual por un personaje humano de pixel art, manteniendo intacta toda la lógica de gameplay existente.
+
+Debes trabajar como si este fuera un proyecto real en producción:
+
+- No hagas cambios innecesarios.
+- No rompas funcionalidades existentes.
+- No reemplaces código simplemente porque "podría hacerse mejor".
+- No inventes APIs o archivos sin comprobar primero el proyecto.
+- No asumas cómo funcionan las animaciones: inspecciona los spritesheets.
+- No cambies la lógica de gameplay para solucionar un problema puramente visual.
+- No elimines código antiguo hasta comprobar que no existen dependencias.
+- Mantén compatibilidad siempre que sea razonable.
+- Si encuentras algo que no puedes determinar con seguridad, inspecciónalo antes de decidir.
+
+La prioridad es:
+
+1. Entender.
+2. Planificar.
+3. Modificar lo mínimo necesario.
+4. Probar.
+5. Documentar.
+
+---
+
+# 1. OBJETIVO PRINCIPAL
+
+Actualmente el proyecto utiliza un personaje de estilo Ninja como representación visual del jugador.
+
+Queremos sustituir ese aspecto por un personaje humano de pixel art.
+
+El resultado esperado es:
+
+ANTES:
+
+Jugador
+  ↓
+ActorSprite
+  ↓
+ActorVisualCatalog
+  ↓
+ninja_blue.png
+
+DESPUÉS:
+
+Jugador
+  ↓
+ActorSprite
+  ↓
+Definición visual del personaje
+  ↓
+Human Character SpriteSheet
+
+La lógica del jugador NO debe cambiar.
+
+El jugador debe seguir:
+
+- moviéndose igual;
+- teniendo la misma velocidad;
+- teniendo la misma aceleración/desaceleración si existe;
+- colisionando igual;
+- teniendo el mismo hitbox;
+- teniendo la misma vida;
+- recibiendo el mismo daño;
+- haciendo el mismo daño;
+- usando las mismas armas;
+- atacando de la misma manera;
+- utilizando el mismo inventario;
+- utilizando la misma cámara;
+- funcionando con el mismo sistema multiplayer;
+- funcionando con la misma lógica de interacción;
+- funcionando con los mismos sistemas de IA si aplican.
+
+El cambio debe ser principalmente VISUAL.
+
+---
+
+# 2. REGLA FUNDAMENTAL
+
+NO reconstruyas el sistema de personajes desde cero.
+
+Primero debes entender cómo funciona actualmente.
+
+Antes de modificar cualquier archivo debes inspeccionar el proyecto completo y localizar:
+
+- PlayerView
+- PlayerPresenter
+- ActorSprite
+- ActorVisualCatalog
+- cualquier clase relacionada con actores/personajes
+- sistema de animaciones
+- sistema de sprites
+- sistema de direcciones
+- sistema de ataque visual
+- sistema de armas
+- sistema de hitbox
+- sistema de movimiento
+- sistema de NPC
+- tests relacionados
+- configuración de Godot
+- documentación de assets
+
+Busca específicamente referencias a:
+
+- ninja_blue.png
+- ActorSprite
+- ActorVisualCatalog
+- PlayerView
+- animation
+- sprite
+- texture
+- atlas
+- frame
+- region
+- Sprite2D
+- AnimatedSprite2D
+- hitbox
+- hand
+- weapon
+- slash
+- attack
+- death
+
+También busca referencias indirectas al Ninja.
+
+No te limites a buscar el nombre del archivo.
+
+---
+
+# 3. PRIMERA FASE: AUDITORÍA DEL PROYECTO
+
+ANTES DE MODIFICAR CÓDIGO debes realizar una auditoría.
+
+No empieces programando inmediatamente.
+
+Inspecciona al menos:
+
+## Presentación
+
+- scripts/presentation/actors/
+- PlayerView
+- NpcView
+- ActorSprite
+- ActorVisualCatalog
+- PlayerPresenter
+- efectos visuales relacionados
+
+## Dominio
+
+Busca:
+
+- Player
+- Actor
+- Character
+- Combat
+- Health
+- Weapon
+- Inventory
+- Movement
+
+## Infraestructura
+
+Comprueba si existe alguna dependencia visual en:
+
+- configuración
+- recursos
+- escenas
+- factories
+- registries
+- loaders
+
+## Tests
+
+Inspecciona:
+
+- tests/unit/test_actor_sprite.gd
+- tests relacionados con PlayerView
+- tests relacionados con animaciones
+- tests relacionados con assets
+
+## Assets
+
+Inspecciona:
+
+- assets/characters/
+- assets/fx/
+- docs/
+- cualquier documentación sobre sprites
+
+---
+
+# 4. SPRITES EXISTENTES
+
+El proyecto contiene actualmente un sprite Ninja utilizado por el jugador:
+
+    res://assets/characters/ninja_blue.png
+
+NO lo elimines.
+
+Debe permanecer disponible como fallback/legacy mientras hacemos la migración.
+
+Además, el proyecto contiene spritesheets que pueden servir como candidatos para personajes humanos:
+
+    docs/sheet-pixelchar-01.png
+    docs/sheet-pixelchar-02.png
+
+Debes inspeccionar visualmente estos archivos antes de utilizarlos.
+
+IMPORTANTE:
+
+NO asumas automáticamente que:
+
+- cada fila corresponde a una animación concreta;
+- cada columna corresponde a un frame concreto;
+- la primera fila es idle;
+- la segunda fila es walk;
+- etc.
+
+Debes determinar la estructura real de cada spritesheet.
+
+Si es necesario, utiliza herramientas de inspección de imágenes o abre los archivos para comprobar:
+
+- dimensiones;
+- tamaño de cada frame;
+- número de columnas;
+- número de filas;
+- direcciones;
+- animaciones;
+- cantidad de frames;
+- orden de los frames;
+- posibles filas vacías;
+- posibles frames especiales.
+
+Documenta lo que realmente encuentres.
+
+---
+
+# 5. SISTEMA ACTUAL DE ANIMACIÓN
+
+Debes analizar exactamente cómo funciona actualmente ActorSprite.
+
+Actualmente sabemos que el sistema trabaja con personajes de frames pequeños y que existe una lógica relacionada con:
+
+- IDLE
+- WALK
+- ATTACK
+- DEAD
+
+Pero NO debes confiar únicamente en esta descripción.
+
+Comprueba el código real.
+
+Determina:
+
+1. ¿Qué tamaño tiene cada frame?
+2. ¿Cómo se calcula la región del spritesheet?
+3. ¿Cómo se selecciona una fila?
+4. ¿Cómo se selecciona una columna?
+5. ¿Cómo se representa cada dirección?
+6. ¿Cómo se cambia de animación?
+7. ¿Cómo se controla la velocidad de animación?
+8. ¿Qué ocurre cuando una animación termina?
+9. ¿Cómo se representa DEAD?
+10. ¿Cómo se representa ATTACK?
+11. ¿Qué hace el sistema cuando el personaje está quieto?
+12. ¿Cómo se determina la orientación del personaje?
+
+Documenta estas respuestas antes de hacer el cambio.
+
+---
+
+# 6. NO QUIERO UNA REESCRITURA COMPLETA
+
+Si el sistema actual funciona bien, NO lo reemplaces por otro sistema completamente diferente.
+
+Por ejemplo:
+
+NO hagas esto:
+
+    ActorSprite actual
+        ↓
+    eliminar
+        ↓
+    AnimatedSprite2D nuevo
+        ↓
+    reescribir PlayerView
+        ↓
+    reescribir PlayerPresenter
+        ↓
+    reescribir Player
+
+Eso sería innecesario.
+
+En cambio, intenta evolucionar el sistema existente.
+
+La arquitectura deseada es aproximadamente:
+
+    Actor
+       │
+       ▼
+    ActorView
+       │
+       ▼
+    ActorSprite
+       │
+       ▼
+    CharacterVisualDefinition
+       │
+       ├── spritesheet
+       ├── frame_size
+       ├── idle
+       ├── walk
+       ├── attack
+       ├── dead
+       ├── directions
+       ├── animation_speed
+       └── offsets
+
+Si el proyecto ya tiene una arquitectura equivalente, reutilízala.
+
+No introduzcas una nueva abstracción simplemente por introducirla.
+
+---
+
+# 7. OBJETIVO DE ARQUITECTURA VISUAL
+
+Quiero que el sistema deje de estar acoplado específicamente al Ninja.
+
+Actualmente parece existir algo similar a:
+
+    const PLAYER_SHEET := "res://assets/characters/ninja_blue.png"
+
+Esto debe evolucionar de forma que el jugador pueda utilizar una definición visual humana.
+
+Por ejemplo, conceptualmente:
+
+    PLAYER_HUMAN
+
+y opcionalmente:
+
+    PLAYER_NINJA
+
+Pero adapta el diseño al código real del proyecto.
+
+La idea importante es:
+
+    GAMEPLAY
+       ↓
+    PLAYER
+       ↓
+    VISUAL DEFINITION
+       ↓
+    SPRITESHEET
+
+No:
+
+    PLAYER
+       ↓
+    NINJA
+
+El sistema de gameplay no debe saber que existe un Ninja.
+
+---
+
+# 8. CREAR UN SISTEMA DE DEFINICIONES VISUALES
+
+Si resulta apropiado después de inspeccionar el código, crea una estructura reutilizable para definir personajes.
+
+Por ejemplo, conceptualmente:
+
+CharacterVisualDefinition
+
+con información como:
+
+- texture/spritesheet
+- frame_size
+- idle animation
+- walk animation
+- attack animation
+- dead animation
+- direction mapping
+- frames per animation
+- animation speed
+- visual offset
+- hand offset
+- optional weapon offset
+
+No copies literalmente esta estructura si el proyecto ya tiene una solución equivalente.
+
+Adáptala a la arquitectura existente.
+
+La abstracción debe servir para poder agregar posteriormente:
+
+- Player humano
+- NPC humano
+- distintos ciudadanos
+- policías
+- médicos
+- vendedores
+- trabajadores
+- enemigos humanos
+- otros personajes
+
+sin tener que reescribir ActorSprite.
+
+---
+
+# 9. PERSONAJE HUMANO DEL JUGADOR
+
+El jugador debe dejar de utilizar visualmente el Ninja y utilizar uno de los personajes humanos disponibles.
+
+Preferencia inicial:
+
+    docs/sheet-pixelchar-01.png
+
+o
+
+    docs/sheet-pixelchar-02.png
+
+Pero debes elegir después de inspeccionarlos correctamente.
+
+NO elijas simplemente por el nombre.
+
+Debes determinar cuál encaja mejor con:
+
+- tamaño;
+- estilo;
+- dirección;
+- animaciones;
+- escala;
+- calidad;
+- compatibilidad con el sistema actual.
+
+Si uno de ellos no tiene las animaciones necesarias, determina si puede utilizarse correctamente o si debemos mantener temporalmente alguna animación del sistema anterior.
+
+---
+
+# 10. NO CAMBIAR EL GAMEPLAY
+
+Este punto es extremadamente importante.
+
+NO debes modificar:
+
+- velocidad del jugador;
+- aceleración;
+- gravedad si existe;
+- movimiento;
+- input;
+- colisiones;
+- hitboxes;
+- hurtboxes;
+- health;
+- damage;
+- stamina;
+- inventario;
+- armas;
+- combate;
+- navegación;
+- IA;
+- multiplayer;
+- networking;
+- persistencia;
+- base de datos;
+- lógica de servidor.
+
+Excepto si encuentras una dependencia estrictamente necesaria para adaptar la representación visual.
+
+---
+
+# 11. HITBOX DEL JUGADOR
+
+El sprite visual NO determina automáticamente el tamaño lógico del personaje.
+
+Por tanto:
+
+NO aumentes ni reduzcas el hitbox simplemente porque el humano tenga una apariencia diferente.
+
+Si actualmente existe algo como:
+
+    CircleShape2D
+    radius = 5
+
+mantén esa configuración inicialmente.
+
+La pregunta es:
+
+"¿El personaje visual humano necesita una calibración visual?"
+
+No:
+
+"¿Tenemos que cambiar el gameplay?"
+
+Si el sprite queda visualmente descentrado respecto al hitbox, corrige el OFFSET VISUAL.
+
+No cambies el hitbox salvo que exista evidencia de que el sistema actual tiene un problema real.
+
+---
+
+# 12. POSICIÓN DEL PERSONAJE
+
+Comprueba:
+
+- centro del sprite;
+- pies del personaje;
+- origen del Node2D;
+- posición respecto al collision shape;
+- sombra si existe;
+- arma;
+- efectos de ataque.
+
+En un juego top-down es especialmente importante que:
+
+    posición lógica
+          ↓
+       pies del personaje
+          ↓
+       sprite encima
+
+No queremos que el humano parezca flotar ni hundirse en el suelo.
+
+Si es necesario, utiliza offsets visuales.
+
+NO modifiques la posición lógica del jugador.
+
+---
+
+# 13. SISTEMA DE ARMAS
+
+El proyecto tiene lógica relacionada con armas y posición de la mano.
+
+Debes inspeccionar cómo funciona actualmente.
+
+Busca específicamente:
+
+- hand_position()
+- HAND_HEIGHT
+- HAND_REACH
+- HAND_VERTICAL_REACH
+- weapon positioning
+- weapon sprite
+- attack origin
+
+Actualmente existen valores relacionados con:
+
+    ACTOR_FRAME_SIZE = 16
+
+y offsets aproximados para la mano.
+
+NO los cambies a ciegas.
+
+Primero entiende cómo se utilizan.
+
+Después de colocar el personaje humano:
+
+1. Comprueba dónde está visualmente la mano.
+2. Comprueba dónde aparece el arma.
+3. Comprueba si el arma parece estar sostenida correctamente.
+4. Comprueba las cuatro direcciones.
+5. Comprueba el ataque.
+
+Si el arma queda ligeramente desplazada, ajusta SOLO el offset visual.
+
+NO cambies:
+
+- alcance real;
+- daño;
+- hit detection;
+- attack cooldown;
+- lógica de combate.
+
+---
+
+# 14. EFECTO DE ATAQUE / SLASH
+
+Existe un efecto relacionado con el ataque:
+
+    assets/fx/slash.png
+
+y lógica de posicionamiento relacionada con el actor.
+
+Debes inspeccionar:
+
+- slash_effect.gd
+- PlayerView
+- offsets del FX
+- relación con ActorSprite
+
+Comprueba si el nuevo personaje humano necesita un ajuste visual.
+
+Si lo necesita:
+
+- ajusta offsets;
+- mantén el mismo efecto;
+- mantén la misma duración;
+- mantén el mismo daño;
+- mantén el mismo alcance;
+- mantén la misma lógica.
+
+NO reescribas el sistema de combate.
+
+---
+
+# 15. ANIMACIONES REQUERIDAS
+
+El mínimo requerido para el personaje humano es:
+
+    IDLE
+    WALK
+    ATTACK
+    DEAD
+
+Si el spritesheet humano no tiene una animación real de DEAD:
+
+- no inventes una animación falsa compleja;
+- comprueba cómo funciona actualmente DEAD;
+- utiliza el comportamiento más compatible posible;
+- documenta la limitación.
+
+Si el asset tiene:
+
+- RUN
+- HURT
+- JUMP
+- DODGE
+- FALL
+- CROUCH
+
+NO es necesario implementarlas todavía.
+
+Puedes dejar la arquitectura preparada para ellas si hacerlo es sencillo y no introduce complejidad innecesaria.
+
+---
+
+# 16. DIRECCIONES
+
+Comprueba cuántas direcciones soporta realmente el sistema actual.
+
+Si actualmente utiliza:
+
+- Norte
+- Sur
+- Este
+- Oeste
+
+mantén 4 direcciones.
+
+NO conviertas el sistema automáticamente a 8 direcciones.
+
+No queremos modificar gameplay solamente para aprovechar un spritesheet.
+
+Si el nuevo spritesheet tiene una organización distinta, crea un mapping visual.
+
+Ejemplo conceptual:
+
+    GAME_DIRECTION_NORTH
+          ↓
+    HUMAN_SPRITE_ROW_0
+
+    GAME_DIRECTION_SOUTH
+          ↓
+    HUMAN_SPRITE_ROW_1
+
+etc.
+
+Pero determina el mapping real inspeccionando los assets.
+
+---
+
+# 17. ESCALA DEL PIXEL ART
+
+Inspecciona la configuración del proyecto.
+
+Actualmente el proyecto utiliza una resolución base pequeña y escalado posterior, con estilo pixel art y nearest-neighbor.
+
+Comprueba:
+
+- viewport;
+- stretch mode;
+- texture filtering;
+- import settings;
+- escala de sprites.
+
+No cambies la resolución global del juego.
+
+No cambies el renderer.
+
+No cambies el estilo gráfico general.
+
+El nuevo personaje debe integrarse visualmente con el proyecto existente.
+
+---
+
+# 18. CONSERVAR EL NINJA COMO FALLBACK
+
+NO borres:
+
+    assets/characters/ninja_blue.png
+
+Aunque ya no sea el personaje principal.
+
+Debe quedar disponible como:
+
+- fallback;
+- referencia;
+- compatibilidad;
+- asset legacy.
+
+Si la arquitectura lo permite, conserva una definición:
+
+    PLAYER_NINJA
+
+y otra:
+
+    PLAYER_HUMAN
+
+El jugador deberá utilizar HUMAN por defecto.
+
+Esto permitirá volver al Ninja durante debugging si aparece algún problema.
+
+---
+
+# 19. NPCs
+
+NO intentes convertir todos los NPCs a humanos en esta tarea.
+
+Este trabajo es principalmente:
+
+    PLAYER → HUMAN
+
+No hagas todavía:
+
+- sistema completo de ciudadanos;
+- generación de humanos;
+- policía;
+- médicos;
+- vendedores;
+- trabajadores;
+- sistema de ropa;
+- sistema de pelo;
+- personalización;
+- character creator;
+- modular sprites;
+- NPC brain;
+- trabajos;
+- necesidades;
+- relaciones;
+- economía.
+
+Todo eso pertenece a fases posteriores.
+
+Sin embargo, la arquitectura que diseñes no debe impedir que podamos hacer esas cosas posteriormente.
+
+---
+
+# 20. SEPARAR APARIENCIA DE IDENTIDAD LÓGICA
+
+Es importante que entiendas esta regla:
+
+NpcKind NO debe convertirse automáticamente en apariencia.
+
+Por ejemplo:
+
+    SLIME
+    OWL
+    SPIDER
+    LIZARD
+
+son categorías/lógica del juego.
+
+No conviertas:
+
+    NpcKind.HUMAN
+
+en una solución improvisada para todo.
+
+La apariencia debe ser una preocupación de la capa visual.
+
+Queremos poder tener eventualmente:
+
+    NPC lógico
+        +
+    visual humano
+
+sin mezclar ambas responsabilidades.
+
+---
+
+# 21. TESTS
+
+Debes inspeccionar los tests existentes antes de modificarlos.
+
+Especialmente:
+
+    tests/unit/test_actor_sprite.gd
+
+Existe actualmente una prueba/referencia relacionada con:
+
+    res://assets/characters/ninja_blue.png
+
+No borres el test simplemente porque ya no sea correcto.
+
+Actualízalo para reflejar la nueva arquitectura.
+
+Los tests deben verificar comportamiento, no detalles innecesariamente frágiles.
+
+Por ejemplo:
+
+BUENO:
+
+    ActorSprite puede cargar una CharacterVisualDefinition válida.
+
+    ActorSprite puede utilizar el spritesheet humano.
+
+    Las animaciones requeridas están correctamente definidas.
+
+    El fallback Ninja sigue siendo válido.
+
+EVITAR:
+
+    Test extremadamente acoplado a una fila concreta si esa fila es solamente un detalle del asset.
+
+---
+
+# 22. VALIDACIÓN DE ASSETS
+
+Antes de declarar terminado el trabajo debes comprobar:
+
+- que la textura existe;
+- que la ruta es correcta;
+- que Godot puede cargarla;
+- que sus dimensiones son correctas;
+- que el tamaño de frame es correcto;
+- que no existe un offset incorrecto;
+- que las animaciones no leen fuera del spritesheet;
+- que no aparecen frames vacíos accidentalmente.
+
+Comprueba también si Godot necesita algún ajuste de importación.
+
+---
+
+# 23. DOCUMENTACIÓN
+
+Crea o actualiza:
+
+    docs/CHARACTER_VISUAL_SYSTEM.md
+
+La documentación debe explicar:
+
+## 23.1 Propósito
+
+Qué problema resuelve el sistema.
+
+## 23.2 Arquitectura
+
+Cómo se conecta:
+
+    Player
+      ↓
+    PlayerView
+      ↓
+    ActorSprite
+      ↓
+    Visual Definition
+      ↓
+    SpriteSheet
+
+## 23.3 Assets
+
+Qué spritesheet usa el jugador.
+
+## 23.4 Animaciones
+
+Documenta:
+
+- IDLE
+- WALK
+- ATTACK
+- DEAD
+
+## 23.5 Direcciones
+
+Documenta el mapping real.
+
+## 23.6 Frame size
+
+Documenta el tamaño real encontrado.
+
+## 23.7 Fallback
+
+Explica que Ninja permanece como fallback/legacy.
+
+## 23.8 Extensión futura
+
+Explica cómo agregar otro personaje sin modificar el gameplay.
+
+---
+
+# 24. REGLA SOBRE DOCUMENTACIÓN EXISTENTE
+
+No sobrescribas documentación existente sin necesidad.
+
+Revisa primero:
+
+    docs/assets/TEXTURAS.md
+
+Si necesita actualización, actualízala.
+
+No elimines información válida simplemente porque ya no sea relevante al jugador.
+
+---
+
+# 25. COMPATIBILIDAD
+
+Después del cambio, el proyecto debe seguir funcionando con:
+
+- jugador;
+- movimiento;
+- cámara;
+- colisiones;
+- combate;
+- armas;
+- vida;
+- daño;
+- muerte;
+- respawn si existe;
+- multiplayer;
+- NPCs;
+- navegación;
+- UI;
+- efectos;
+- escenas.
+
+Si algo deja de funcionar:
+
+1. identifica la causa;
+2. corrígela;
+3. evita tocar sistemas no relacionados.
+
+---
+
+# 26. ORDEN DE EJECUCIÓN
+
+Debes seguir este orden.
+
+## FASE 1 — INSPECCIÓN
+
+No modifiques código todavía.
+
+Inspecciona:
+
+- estructura del proyecto;
+- ActorSprite;
+- ActorVisualCatalog;
+- PlayerView;
+- PlayerPresenter;
+- combate;
+- armas;
+- slash;
+- hitbox;
+- tests;
+- assets;
+- configuración;
+- documentación.
+
+Luego genera internamente un diagnóstico claro.
+
+---
+
+## FASE 2 — INSPECCIÓN DE SPRITES
+
+Inspecciona:
+
+    docs/sheet-pixelchar-01.png
+    docs/sheet-pixelchar-02.png
+    assets/characters/ninja_blue.png
+
+Determina:
+
+- dimensiones;
+- frame size;
+- filas;
+- columnas;
+- animaciones;
+- direcciones;
+- frames.
+
+No adivines.
+
+---
+
+## FASE 3 — PLAN
+
+Antes de implementar determina:
+
+1. Qué archivos necesitan modificarse.
+2. Qué archivos no necesitan modificarse.
+3. Qué abstracción visual es necesaria.
+4. Qué asset humano será utilizado.
+5. Cómo se mapearán las animaciones.
+6. Cómo se mapearán las direcciones.
+7. Qué offsets necesitan calibración.
+8. Qué tests deben actualizarse.
+
+No hagas una refactorización mayor si no es necesaria.
+
+---
+
+## FASE 4 — IMPLEMENTACIÓN
+
+Implementa el cambio.
+
+Prioridad:
+
+    1. Visual humano
+    2. Animaciones
+    3. Direcciones
+    4. Weapon offset
+    5. Slash offset
+    6. Tests
+    7. Documentación
+
+---
+
+## FASE 5 — VALIDACIÓN
+
+Ejecuta los tests existentes.
+
+Si el proyecto tiene comandos de test configurados, utilízalos.
+
+También realiza una validación manual/visual si es posible.
+
+Comprueba:
+
+### Movimiento
+
+- arriba;
+- abajo;
+- izquierda;
+- derecha;
+- diagonales si existen.
+
+### Idle
+
+El personaje debe quedar correctamente animado cuando no se mueve.
+
+### Walk
+
+Debe reproducirse la animación correcta.
+
+### Attack
+
+Debe mirar en la dirección correcta y el arma debe aparecer correctamente.
+
+### Death
+
+Debe utilizar el comportamiento configurado.
+
+### Colisiones
+
+No deben cambiar.
+
+### Cámara
+
+No debe cambiar.
+
+### Combat
+
+No debe cambiar.
+
+---
+
+# 27. SI NO PUEDES EJECUTAR EL JUEGO
+
+Si tu entorno no permite ejecutar Godot gráficamente:
+
+NO inventes que lo probaste.
+
+Haz todas las comprobaciones estáticas posibles:
+
+- scripts;
+- rutas;
+- recursos;
+- dimensiones;
+- tests;
+- referencias;
+- sintaxis;
+- estructura.
+
+Y especifica claramente:
+
+    "No fue posible realizar validación visual porque..."
+
+No declares el trabajo 100% validado si no lo pudiste comprobar.
+
+---
+
+# 28. NO HACER
+
+Está estrictamente prohibido hacer estas cosas salvo que sean absolutamente necesarias:
+
+- reescribir Player;
+- reescribir el sistema de movimiento;
+- reescribir combate;
+- reescribir networking;
+- reescribir NPCs;
+- reescribir inventario;
+- cambiar la base de datos;
+- cambiar la resolución;
+- cambiar el renderer;
+- cambiar el mapa;
+- cambiar el sistema de cámara;
+- eliminar tests;
+- eliminar el Ninja;
+- eliminar assets existentes sin comprobar dependencias;
+- introducir dependencias externas innecesarias;
+- instalar plugins innecesarios;
+- crear un character creator;
+- crear sistema de ropa;
+- crear sistema de personalización;
+- convertir todos los NPCs a humanos;
+- implementar IA avanzada;
+- implementar nuevos sistemas de gameplay.
+
+---
+
+# 29. PRINCIPIO DE CAMBIO MÍNIMO
+
+Utiliza este principio durante todo el trabajo:
+
+"El mejor cambio es el cambio mínimo que resuelve correctamente el problema y deja una arquitectura preparada para crecer."
+
+Si puedes solucionar algo modificando 2 archivos correctamente, no modifiques 15.
+
+Si una abstracción existente ya resuelve el problema, reutilízala.
+
+Si necesitas crear una abstracción nueva, justifica por qué.
+
+---
+
+# 30. SI ENCUENTRAS PROBLEMAS PREEXISTENTES
+
+Si encuentras bugs que no están relacionados con esta tarea:
+
+NO los arregles automáticamente.
+
+Regístralos en el informe final como:
+
+    Problemas preexistentes detectados
+
+Esto evita que el alcance de la tarea crezca accidentalmente.
+
+Solo corrige un problema preexistente si bloquea directamente la migración visual.
+
+---
+
+# 31. RESULTADO ARQUITECTÓNICO ESPERADO
+
+Al finalizar quiero poder agregar posteriormente:
+
+    HumanPlayer
+    HumanCivilian
+    HumanPolice
+    HumanDoctor
+    HumanWorker
+    HumanMerchant
+
+sin tener que modificar:
+
+- movimiento;
+- combate;
+- health;
+- networking;
+- inventario;
+- lógica de NPC.
+
+Idealmente solo debería ser necesario registrar una nueva definición visual.
+
+La arquitectura debe evolucionar hacia:
+
+    GAMEPLAY
+        │
+        ├── Player
+        ├── NPC
+        ├── Combat
+        ├── Health
+        └── Inventory
+              │
+              ▼
+        PRESENTATION
+              │
+              ▼
+        ActorSprite
+              │
+              ▼
+        CharacterVisualDefinition
+              │
+              ├── Human
+              ├── Ninja
+              └── Future characters
+
+---
+
+# 32. INFORME FINAL OBLIGATORIO
+
+Cuando termines, NO respondas simplemente:
+
+    "Listo."
+
+Debes entregar un informe técnico.
+
+Incluye:
+
+## 1. Diagnóstico inicial
+
+Explica cómo funcionaba originalmente el sistema visual.
+
+## 2. Archivos inspeccionados
+
+Lista los archivos importantes revisados.
+
+## 3. Archivos modificados
+
+Lista exactamente qué archivos modificaste.
+
+## 4. Archivos creados
+
+Lista cualquier archivo nuevo.
+
+## 5. Archivos que NO modificaste
+
+Especialmente sistemas de gameplay que permanecieron intactos.
+
+## 6. Asset humano elegido
+
+Indica:
+
+- archivo;
+- dimensiones;
+- frame size;
+- filas;
+- columnas;
+- animaciones;
+- direcciones.
+
+## 7. Mapping de animaciones
+
+Por ejemplo:
+
+    IDLE → ...
+    WALK → ...
+    ATTACK → ...
+    DEAD → ...
+
+Utiliza los valores reales encontrados.
+
+## 8. Arquitectura final
+
+Explica cómo queda conectado:
+
+    Player
+       ↓
+    PlayerView
+       ↓
+    ActorSprite
+       ↓
+    Visual Definition
+       ↓
+    Human Sprite
+
+## 9. Fallback
+
+Explica cómo se conserva el Ninja.
+
+## 10. Offsets
+
+Indica si fue necesario modificar:
+
+- sprite offset;
+- hand position;
+- weapon offset;
+- slash offset.
+
+## 11. Tests
+
+Indica:
+
+- tests ejecutados;
+- tests modificados;
+- resultado.
+
+## 12. Validación visual
+
+Indica claramente si pudiste ejecutar el juego y comprobar visualmente el personaje.
+
+## 13. Problemas encontrados
+
+Lista cualquier problema pendiente.
+
+## 14. Problemas preexistentes
+
+Lista problemas que ya existían y que no fueron causados por esta tarea.
+
+## 15. Próximo paso recomendado
+
+Propón solamente el siguiente paso lógico.
+
+No implementes automáticamente ese siguiente paso.
+
+---
+
+# 33. DEFINITION OF DONE
+
+La tarea solo se considera terminada si:
+
+[ ] El jugador utiliza un personaje humano.
+
+[ ] El Ninja deja de ser el visual principal.
+
+[ ] El Ninja sigue disponible como fallback/legacy.
+
+[ ] El sistema no está acoplado exclusivamente al Ninja.
+
+[ ] IDLE funciona.
+
+[ ] WALK funciona.
+
+[ ] ATTACK funciona.
+
+[ ] DEAD funciona o se documenta claramente su limitación.
+
+[ ] Las direcciones funcionan correctamente.
+
+[ ] El sprite está correctamente centrado respecto al personaje.
+
+[ ] El personaje no parece flotar ni hundirse.
+
+[ ] El arma aparece correctamente.
+
+[ ] El slash aparece correctamente.
+
+[ ] El hitbox no fue modificado innecesariamente.
+
+[ ] El movimiento no cambió.
+
+[ ] El combate no cambió.
+
+[ ] La vida/daño no cambió.
+
+[ ] La cámara no cambió.
+
+[ ] El multiplayer no cambió.
+
+[ ] Los NPCs existentes continúan funcionando.
+
+[ ] No se eliminaron tests sin justificación.
+
+[ ] Los tests relevantes fueron actualizados.
+
+[ ] La documentación fue actualizada.
+
+[ ] No existen referencias rotas al nuevo asset.
+
+[ ] No existen rutas incorrectas.
+
+[ ] No existen animaciones que lean fuera del spritesheet.
+
+[ ] No se realizaron cambios fuera del alcance.
+
+[ ] El proyecto puede seguir creciendo hacia múltiples personajes humanos.
+
+---
+
+# 34. REGLA FINAL
+
+NO empieces modificando archivos inmediatamente.
+
+Primero inspecciona y comprende el proyecto.
+
+Después implementa.
+
+Después prueba.
+
+Después documenta.
+
+Si tienes que elegir entre:
+
+A) una solución rápida pero acoplada al personaje actual
+
+o
+
+B) una solución ligeramente más estructurada que permita cambiar el personaje sin tocar el gameplay,
+
+elige B, siempre que no implique una reescritura innecesaria del proyecto.
+
+El objetivo NO es solamente "hacer que el Ninja parezca una persona".
+
+El objetivo es conseguir que:
+
+    EL GAMEPLAY NO DEPENDA DE LA APARIENCIA DEL PERSONAJE.
+
+El jugador debe ser una entidad lógica.
+
+El personaje humano debe ser solamente su representación visual.
+
+Haz el trabajo con mentalidad de proyecto real y con cambios pequeños, seguros, comprobables y reversibles.
