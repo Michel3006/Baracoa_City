@@ -404,12 +404,12 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
   extremo del dibujo: `centered = false`. No razonar la fórmula, imprimir `get_rect()`.
 - **Resolución 384x216**: 16:9 exacto, escala de ventana x3, tile de 16 px. Ojo:
   216 **no** es múltiplo de 16. No escribir tests que asuman lo contrario.
-- **Zoom de cámara (`GameConfig.CAMERA_ZOOM`, hoy 1.5)**: la imagen guardada por
+- **Zoom de cámara (`GameConfig.CAMERA_ZOOM`, hoy 1)**: la imagen guardada por
   `screenshot.gd` es de 384x216 (el viewport), y en ella cada píxel de mundo ocupa
-  `zoom` píxeles de imagen: con 1.5 son 1,5 px de imagen por píxel de mundo, con el
-  zoom 3 original eran 3. Para medir sobre una captura hay que tener esto en cuenta.
-  Con 1.5 los píxeles de mundo no caen todos en el mismo número de píxeles de imagen
-  (se alternan 1 y 2): si una medida no cuadra por un píxel, es eso y no el sprite.
+  `zoom` píxeles de imagen: con el 1 actual es 1 a 1, con el 1.5 anterior eran 1,5 y
+  con el zoom 3 original 3. Para medir sobre una captura hay que tener esto en
+  cuenta; con zooms no enteros un píxel de mundo se reparte en distinta cantidad de
+  píxeles de imagen según caiga y la medida descuadra por eso, no por el sprite.
 - **`move_and_slide()` no expulsa al instante**: con velocidad cero no deshace el
   solapamiento en el primer frame. Por eso los tests esperan varios
   `physics_frame`.

@@ -12,7 +12,7 @@ final.
 | píxeles | 1024x640 |
 | origen | (0, 0), esquina superior izquierda |
 | tile | 16 px |
-| resolución base | 384x216 (con `GameConfig.CAMERA_ZOOM` = 1.5 la cámara muestra 256x144 px) |
+| resolución base | 384x216, que con `GameConfig.CAMERA_ZOOM` = 1 es exactamente lo que enseña la cámara |
 
 El mapa se dibuja entero en memoria: 1024x640 px es trivial para el hardware de
 desarrollo. Cuando el municipio crezca, esto se sustituye por carga por zonas

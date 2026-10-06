@@ -17,10 +17,11 @@ const WINDOW_SCALE := 3
 const TILE_SIZE := 16
 ## Zoom de la cámara del mundo (sección 17). La ventana escala el viewport x3
 ## (`window/stretch/mode="viewport"`), así que en pantalla cada píxel de mundo ocupa
-## 3 x CAMERA_ZOOM píxeles: solo los zooms enteros (3, 2, 1) dejan los píxeles todos
-## iguales. Con 1.5 la cámara enseña 256x144 px de mundo y la escala es 4,5x, que
-## reparte los píxeles en bloques de 4 y 5.
-const CAMERA_ZOOM := 1.5
+## 3 x CAMERA_ZOOM píxeles: solo los zooms enteros (3, 2, 1) dejan todos los píxeles
+## con el mismo tamaño. Con 1 la cámara enseña los 384x216 px de la resolución base
+## con escala 3x; bajar de 1 enseñaría más mapa, pero con píxeles de tamaños
+## desiguales y un personaje más pequeño de lo que ya es.
+const CAMERA_ZOOM := 1.0
 
 # --- Jugador ---
 ## Velocidad de caminar, en píxeles de mundo por segundo. Es el valor con el que se
