@@ -56,6 +56,8 @@ func _run() -> void:
 	await _check("el NPC muere y lo dice", _npc_dies)
 	await _check("un NPC muerto ya no recibe daño", _dead_npc_ignored)
 	await _check("el NPC golpea al jugador", _npc_hits_player)
+	await _check("el golpe del NPC deja ver el arco", _npc_slash_spawns)
+	await _check("al recibir daño el jugador se tiñe de rojo", _player_flashes_when_hurt)
 	await _check("el presentador del NPC golpea sin ayuda", _npc_presenter_strikes_player)
 	await _check("la invulnerabilidad protege al jugador", _player_invulnerable)
 	await _check("la invulnerabilidad del NPC aguanta", _npc_invulnerable)
@@ -139,6 +141,15 @@ func _session() -> GameSession:
 func _settle(frames: int = 3) -> void:
 	for _frame: int in range(frames):
 		await physics_frame
+
+
+## Espera a que la capa de efectos se vacíe: los arcos se borran solos, así que solo
+## hace falta darles tiempo; si no, el arco anterior se contaría como el nuevo.
+func _drain_fx(layer: Node2D, limit: int = 120) -> void:
+	var waited := 0
+	while layer.get_child_count() > 0 and waited < limit:
+		await physics_frame
+		waited += 1
 
 
 ## En vivo y con la vida a tope. Si esto no hay, el resto de los casos no significan
@@ -438,6 +449,110 @@ func _npc_hits_player() -> void:
 			npc.behavior.attack_damage, _session().player.stats.defense
 		),
 		"y el daño es el que dice la fórmula"
+	)
+
+
+## El enemigo tiene que verse que pega.
+##
+## Hasta ahora el NPC quitaba vida sin que saliera nada en pantalla: la pose de
+## golpe sí se lanzaba, pero no había arco, así que en una pelea no se distinguía un
+## zarpazo de un encontrado. El arco va a la misma capa que el del jugador y se
+## suelta en el mismo fotograma en que empieza la pose (`attack_started`), no cuando
+## el golpe conecta: un zarpazo fallado también se ve, que es como funciona un golpe.
+##
+## El caso mide la cadena entera: caso de uso -> señal -> presentador -> efecto en la
+## capa del mundo. Si el presentador perdiera el cable del generador de efectos, la
+## capa se quedaría vacía aquí y en el juego.
+func _npc_slash_spawns() -> void:
+	var layer: Node2D = _world().fx_layer
+	if not _context.check(layer != null, "la capa de efectos existe"):
+		return
+	await _drain_fx(layer)
+
+	var npc := _healthy_npc()
+	if not _context.check(npc != null, "no hay enemigo con vida"):
+		return
+	var combat := _combat_of(npc)
+	if not _context.check(combat != null, "el enemigo no tiene combate propio"):
+		return
+	# Los relojes a cero: el caso anterior deja al NPC con el golpe en curso y
+	# `try_attack()` se rechazaría por cooldown, que no es lo que se mide aquí.
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+
+	_context.check(combat.try_attack(Vector2.RIGHT), "el zarpazo sale")
+	await _settle(2)
+	_context.check(layer.get_child_count() >= 1, "aparece el arco del NPC")
+	if layer.get_child_count() >= 1:
+		var effect := layer.get_child(0) as SlashEffect
+		if _context.check(effect != null, "y es un efecto de golpe"):
+			var frames := effect.get_node_or_null("Frames") as Sprite2D
+			var texture_path := ""
+			if frames != null and frames.texture != null:
+				texture_path = frames.texture.resource_path
+			_context.check_equal(
+				texture_path,
+				SlashEffect.NPC_SHEET,
+				"y con la hoja de zarpazo, no con la espada del jugador"
+			)
+
+	await _drain_fx(layer)
+	_context.check_equal(layer.get_child_count(), 0, "y se borra al terminar")
+
+
+## El destello de daño: mientras dura la invulnerabilidad el cuerpo entero se tiñe.
+##
+## Es la otra mitad del feedback de "el enemigo golpea", junto al arco que suelta el
+## atacante: sin el tinte, recibir un golpe es solo la barra de vida bajando, que a
+## 384x216 son cuatro píxeles. El tinte lo pone la vista al recibir
+## `invulnerability_changed`, así que el caso mide la cadena daño -> señal ->
+## presentador -> `modulate`, que es lo que se ve en pantalla.
+##
+## Se comprueba también que se apaga al terminar la invulnerabilidad: un tinte que no
+## volviera a la normal dejaría al jugador rojo para el resto de la partida, que es el
+## mismo fallo del revés.
+func _player_flashes_when_hurt() -> void:
+	var body := _player()
+	if not _context.check(body != null, "el mundo tiene jugador"):
+		return
+	_reset_player_combat()
+	await _settle(2)
+	_context.check(
+		body.modulate.is_equal_approx(body.tint),
+		"sin daño reciente el cuerpo está con su tinte normal, no con el rojo (%s)" % str(body.modulate)
+	)
+
+	var npc := _healthy_npc()
+	if not _context.check(npc != null, "no hay enemigo con vida"):
+		return
+	var view := await _bring_npc_close(npc)
+	if not _context.check(view != null, "el enemigo no tiene cuerpo"):
+		return
+	var combat := _combat_of(npc)
+	if not _context.check(combat != null, "el enemigo no tiene combate propio"):
+		return
+	# Relojes a cero, que el caso anterior deja al NPC con el golpe en curso.
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+
+	var before := _session().player.health.current
+	_context.check(combat.try_attack(Vector2.LEFT), "el zarpazo sale")
+	_context.check(combat.strike([_combat()]) == 1, "el golpe le llega al jugador")
+	await _settle(2)
+
+	_context.check(
+		_session().player.health.current < before,
+		"y le quita vida (%.1f -> %.1f)" % [before, _session().player.health.current]
+	)
+	_context.check(
+		body.modulate.is_equal_approx(GameConfig.HURT_TINT),
+		"recibido el golpe el cuerpo se tiñe de rojo y está en %s" % str(body.modulate)
+	)
+
+	# Y se apaga: pasada la invulnerabilidad vuelve a su tinte.
+	_combat().advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	await _settle(2)
+	_context.check(
+		body.modulate.is_equal_approx(body.tint),
+		"pasada la invulnerabilidad el tinte se apaga y queda en %s" % str(body.modulate)
 	)
 
 

@@ -42,19 +42,21 @@ Base terminada:
       borrosa a 384x216).
 - [x] Muerte y reaparición jugables, con tinte de pantalla y botón de revivir.
 - [x] Tests unitarios headless del dominio, del combate, de los enemigos, de los
-      sprites y de la integridad de scripts (111 pruebas).
+      sprites y de la integridad de scripts (113 pruebas).
 - [x] Tests de integración con física real: colisiones y sincronía
       dominio/vista (6 pruebas).
 - [x] Tests de integración de combate con la hitbox real (11 pruebas).
 - [x] Tests de integración de enemigos: IA, golpe de ida y vuelta, muerte y
-      reaparición (18 pruebas).
+      reaparición (20 pruebas).
+- [x] Arranque: la escena principal monta un único mundo funcional (17 pruebas).
 
 Pendiente:
 
 - [ ] Inventario con capacidad y equipar.
 - [ ] Objetos genéricos con tipo y apilado.
-- [ ] Barra de golpe en el HUD.
-- [ ] Feedback visual cuando el enemigo golpea: hoy no sale arco ni destello.
+- [x] Barra de golpe en el HUD: muestra cuándo vuelve a estar listo el golpe.
+- [x] Feedback visual cuando el enemigo golpea: zarpazo en pantalla y tinte rojo
+      mientras dura la invulnerabilidad.
 
 ## Fase 2 — Multijugador
 

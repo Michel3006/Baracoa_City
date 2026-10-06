@@ -22,6 +22,10 @@ var _combat: NpcCombat = null
 ## frame mientras la hitbox sigue encendida.
 var _struck: Array[Object] = []
 
+## Nodo donde se sueltan los efectos de golpe. Lo inyecta `NpcSpawner` con la capa
+## de efectos del mundo; sin él no hay arco, pero el resto del combate funciona.
+var _fx_parent: Node2D = null
+
 
 func setup(view: NpcView, npc: Npc, brain: NpcBrain, combat: NpcCombat) -> void:
 	_view = view
@@ -48,6 +52,12 @@ func setup(view: NpcView, npc: Npc, brain: NpcBrain, combat: NpcCombat) -> void:
 
 func npc() -> Npc:
 	return _npc
+
+
+## Dónde se sueltan los efectos de golpe. Lo inyecta el generador de NPC con la capa
+## de efectos del mundo, igual que hace el presentador del jugador.
+func set_fx_parent(node: Node2D) -> void:
+	_fx_parent = node
 
 
 func _physics_process(delta: float) -> void:
@@ -126,9 +136,24 @@ func _towards_target() -> Vector2:
 	return offset.normalized()
 
 
-func _on_attack_started(_direction: Vector2, _window: float) -> void:
+func _on_attack_started(direction: Vector2, _window: float) -> void:
 	_struck.clear()
 	_view.begin_attack(_npc.behavior.attack_range)
+	_spawn_slash(direction)
+
+
+## Suelta el zarpazo por delante del cuerpo, en el mismo sitio que el arco del
+## jugador (`SlashEffect.origin_for`), pero con la hoja de zarpazo del pack.
+##
+## El NPC no tiene armas intercambiables: su golpe es un zarpazo, y la pose de
+## ataque del pack es un swing con lo que sea en la mano. Por eso aquí el efecto sale
+## siempre, mientras que al jugador desarmado no le sale (no hay hoja que corte el
+## aire). Sin esto el enemigo quitaba vida sin que saliera nada en pantalla.
+func _spawn_slash(direction: Vector2) -> void:
+	if _fx_parent == null or _view == null:
+		return
+	var origin := SlashEffect.origin_for(_view.global_position, direction)
+	SlashEffect.spawn(_fx_parent, direction, origin, 0, SlashEffect.NPC_SHEET)
 
 
 func _on_attack_window_closed() -> void:

@@ -18,7 +18,10 @@ signal player_spawned(player: PlayerView)
 
 const WORLD_SCENE := preload("res://scenes/world/world.tscn")
 const PLAYER_SCENE := preload("res://scenes/player/player.tscn")
-const Z_FX := 8
+## La capa de efectos, con el z que `GameConfig` le asigna: los arcos tienen que
+## verse por encima del mundo y de los actores, y el sitio donde se decide eso es un
+## sitio solo.
+const Z_FX := GameConfig.FX_Z_INDEX
 
 @export var zone_scene: PackedScene = WORLD_SCENE
 @export var player_scene: PackedScene = PLAYER_SCENE
@@ -95,6 +98,9 @@ func setup_npcs(director: NpcDirector) -> void:
 		npc_spawner.name = "NpcSpawner"
 		add_child(npc_spawner)
 	npc_spawner.bind(director)
+	# El arco del zarpazo se suelta en la misma capa que el del jugador. El
+	# `fx_layer` ya existe: `_ready()` monta el mundo antes de que nadie llame aquí.
+	npc_spawner.set_fx_parent(fx_layer)
 
 
 ## Inyecta los casos de uso del jugador. Lo llama la capa Application.

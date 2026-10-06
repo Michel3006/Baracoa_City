@@ -112,19 +112,34 @@ const ACTOR_ATTACK_FPS := 20.0
 ## Desplazamiento en vertical del sprite respecto a los pies, en pixeles. El
 ## origen del nodo esta en los pies: el cuerpo se dibuja hacia arriba.
 const ACTOR_SPRITE_OFFSET := Vector2(0.0, -8.0)
-## Hojas de efecto de golpe: ocho fotogramas en una sola fila.
+## Hojas de efecto de golpe: cuatro fotogramas CUADRADOS de 32x32 en una sola fila.
 ##
-## OJO: el fotograma es 16 de ancho por 32 de ALTO, no 16x16. Un arco de espada es mas
-## alto que ancho, y la hoja son 128x32. Si se recortara en 16x16 saldrian 8x2 celdas
-## y el efecto recorreria la fila de arriba, que esta casi vacia: el golpe se veria
-## parpadear en vez de dibujarse. Hay un test que comprueba la rejilla.
-const FX_FRAME_WIDTH := 16
+## OJO: el fotograma mide 32x32, no 16x32. La hoja del pack es de 128x32 y el pack
+## trae su `Preview.gif` jugando las cuatro celdas de 32 px de izquierda a derecha:
+## comprobado fotograma a fotograma, coincide al 100 %. Recortada en celdas de 16 px
+## cada fotograma real se parte por la mitad, y la animacion sale como un arco, una
+## cola suelta, la mitad de otro arco y asi: un parpadeo que no da ningun error porque
+## ningun numero esta mal, solo el dibujo. Hay un test que comprueba la rejilla y que
+## ningun fotograma se queda vacio.
+const FX_FRAME_WIDTH := 32
 const FX_FRAME_HEIGHT := 32
-const FX_FRAMES := 8
+const FX_FRAMES := 4
+## Fotogramas por segundo del arco. Con cuatro fotogramas salen 0.22 s, que es
+## practicamente lo que dura la pose de golpe (`ATTACK_RECOVERY`): la barre mientras
+## el cuerpo barre y se va al terminar. Si se toca `ATTACK_RECOVERY` o `FX_FPS` hay
+## que revisarlo, que hay un test que compara las dos cosas.
 const FX_FPS := 18.0
-## Distancia al cuerpo a la que aparece el efecto de golpe. A cero el arco sale
-## detrás del personaje y no se ve.
-const FX_ORIGIN_OFFSET := 6.0
+## Punto de anclaje del efecto, medido desde el centro del cuerpo y por delante, en la
+## dirección del golpe.
+##
+## El arco gira alrededor de su centro, así que lo que decide la animación es dónde
+## cae ese centro. Está sobre el centro del torso, que esta `ACTOR_SPRITE_OFFSET` por
+## encima de los pies, y `FX_ORIGIN_OFFSET` px por delante: media altura del cuerpo
+## (8) más 6 px de holgura. Con el centro en los pies el arco lateral salía a media
+## altura de las piernas y el de arriba se metía encima de la cabeza; con esta regla
+## el arco queda centrado en el torso en las cuatro direcciones y sin pisar el
+## cuerpo, medido contra el sprite real. Hay un test.
+const FX_ORIGIN_OFFSET := 14.0
 ## Z del efecto de golpe: por encima del mundo y del NPC, por debajo del HUD.
 const FX_Z_INDEX := 8
 
@@ -195,6 +210,12 @@ const HUD_BAR_GAP := 2
 ## Alto del icono del arma y tinte de pantalla mientras el jugador esta sin vida.
 const HUD_WEAPON_SIZE := Vector2(6, 11)
 const HUD_DOWN_TINT := 0.28
+## Tinte del cuerpo mientras dura la invulnerabilidad: el sprite entero se tiñe de
+## este rojo al recibir un golpe. Es la mitad visible del feedback de daño junto al
+## arco del atacante: sin él, que te peguen solo se nota en la barra de vida, que a
+## 384x216 es mover cuatro píxeles. Lo comparten el jugador y los enemigos, así que
+## va aquí y no dentro de ninguna de las dos vistas.
+const HURT_TINT := Color("ff6b6b")
 
 # --- Muerte y reaparición (sección 8) ---
 ## Tiempo tras morir hasta que el botón de revivir hace algo. Sin espera, un botón

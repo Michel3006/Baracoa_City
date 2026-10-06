@@ -265,14 +265,14 @@ bajan las de la IA; en el de arranque, con un `MainWorldView` de más en
 El runner de enemigos monta su propia zona (`_ensure_npcs()`) en vez de fiarse de que
 el autoload la haya poblado, porque el juego arranca con `GameConfig.NPC_ENABLED`
 apagado. Atar la suite al contenido por defecto del juego es atarla a una bandera, y
-así los 18 casos siguen significando lo mismo se enciendan o apaguen los enemigos.
+así los 20 casos siguen significando lo mismo se enciendan o apaguen los enemigos.
 
 `screenshot.gd` acepta `x`, `y` y `zoom`: teletransporta al jugador y ajusta el
 aumento de la camara, lo que permite inspeccionar una zona entera o un elemento
 concreto sin abrir el editor. **No funciona en `--headless`**: el driver de render
-headless no emite `frame_post_draw` y el script se queda esperando ahí. Sin un
-`Xvfb` no hay forma de capturar la pantalla en esta máquina, así que los sprites se
-revisan contando píxeles de las hojas.
+headless no emite `frame_post_draw` y el script se queda esperando ahí. Para
+capturar hay que darle pantalla (`xvfb-run -a godot --rendering-driver opengl3 --script res://tests/support/screenshot.gd -- ...`), y las capturas se revisan
+contando píxeles de las hojas y de la imagen, no mirándolas.
 
 ## 9. Sprites: cómo se lee una hoja del pack
 
@@ -284,7 +284,8 @@ de los 26 MB del paquete.
 | --- | --- | --- |
 | `assets/characters/ninja_blue.png` | 64x112 | 4 x 7 de 16x16 |
 | `assets/characters/{slime,owl,spider_red,lizard}.png` | 64x64 | 4 x 4 de 16x16 |
-| `assets/fx/slash.png` | 128x32 | 8 de 16x**32** |
+| `assets/fx/slash.png` | 128x32 | 4 de 32x32 (arco del jugador) |
+| `assets/fx/claw.png` | 128x32 | 4 de 32x32 (zarpazo de los enemigos) |
 | `assets/weapons/{blade,rock}.png` | 6x11 y 3x16 | sin rejilla |
 
 Dos cosas que no se deducen mirando los píxeles y que por eso están en
@@ -297,10 +298,15 @@ de saber cuál es izquierda y cuál derecha**. Está en la configuración y no e
 código a propósito: si al jugar el personaje lateral va del revés, se intercambian esos
 dos números y no hay que tocar ningún otro archivo.
 
-**El fotograma del efecto de golpe es de 16 de ancho por 32 de alto**, no cuadrado.
-Por eso `FX_FRAME_WIDTH` y `FX_FRAME_HEIGHT` están separados. Recortarlo en 16x16
-parte la hoja en dos filas y el efecto recorre la de arriba, que está casi vacía: el
-golpe parpadea en blanco en vez de dibujarse, sin ningún error.
+**El fotograma del efecto de golpe es un cuadrado de 32x32**: la hoja es de 128x32
+y contiene **cuatro** fotogramas en una sola fila. Recortarla en 16x16 la parte en
+dos filas y el efecto recorre la de arriba, que está casi vacía: el golpe parpadea
+en blanco en vez de dibujarse, sin ningún error. La rejilla se confirmó casando la
+hoja con el `Preview.gif` del pack píxel a píxel, no contando celdas. El origen del
+efecto lo calcula `SlashEffect.origin_for()` desde el centro del torso
+(`ACTOR_SPRITE_OFFSET` (0, -8)) más la dirección por `FX_ORIGIN_OFFSET`: un arco
+anclado en la raíz del personaje, que está en los pies, queda mal en transversal y
+al mirar hacia abajo.
 
 `ActorSprite` hace el recorte con `hframes` y `vframes` de `Sprite2D`: no hay ningún
 `AtlasTexture` que mantener. Dos tipos de clip:

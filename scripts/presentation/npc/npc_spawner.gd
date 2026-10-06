@@ -31,6 +31,10 @@ var director: NpcDirector = null
 ## tener que recorrer los nodos.
 var _presenters: Dictionary = {}
 
+## Capa de efectos del mundo, para que el arco del zarpazo salga en su sitio. La
+## inyecta `MainWorldView.setup_npcs()`.
+var _fx_parent: Node2D = null
+
 
 func _ready() -> void:
 	z_index = NPC_Z_INDEX
@@ -82,7 +86,19 @@ func _on_agent_ready(id: int, npc: Npc, brain: NpcBrain, combat: NpcCombat) -> v
 	presenter.name = "Presenter"
 	view.add_child(presenter)
 	presenter.setup(view, npc, brain, combat)
+	presenter.set_fx_parent(_fx_parent)
 	_presenters[id] = presenter
+
+
+## Dónde se sueltan los efectos de golpe de los enemigos.
+##
+## Va tanto a los presentadores que ya existen como a los que se creen después: el
+## orden entre `bind()` y esta llamada no debería decidir si los enemigos tienen
+## arco.
+func set_fx_parent(node: Node2D) -> void:
+	_fx_parent = node
+	for presenter: NpcPresenter in _presenters.values():
+		presenter.set_fx_parent(_fx_parent)
 
 
 ## Un NPC ha muerto. El cuerpo se queda congelado en pantalla, que es la lectura

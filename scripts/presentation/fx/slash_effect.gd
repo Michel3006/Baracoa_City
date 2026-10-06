@@ -3,17 +3,24 @@ extends Node2D
 
 ## Efecto visual del golpe cuerpo a cuerpo (sección 25).
 ##
-## Una hoja de ocho fotogramas, cada uno de 16 de ancho por 32 de alto, que se reproduce
-## una vez y se borra sola. No decide nada ni comprueba nada: si aparece, es porque
-## alguien ha pegado. Por eso es un `Node2D` suelto y no un hijo del actor que golpea,
-## así puede morir el actor sin que el efecto se borre a mitad.
+## Una hoja de cuatro fotogramas cuadrados de 32x32, que se reproduce una vez y se
+## borra sola. No decide nada ni comprueba nada: si aparece, es porque alguien ha
+## pegado. Por eso es un `Node2D` suelto y no un hijo del actor que golpea, así puede
+## morir el actor sin que el efecto se borre a mitad.
 ##
-## La hoja es `FX/Attack/SlashCurved/SpriteSheet.png` del pack, recortada en
-## `GameConfig.FX_FRAME_WIDTH` x `GameConfig.FX_FRAME_HEIGHT`.
+## Hay dos hojas, con la misma rejilla: la del jugador es la espada curva del pack
+## (`FX/Attack/SlashCurved`) y la de las criaturas es el zarpazo (`FX/Attack/Claw`).
+## La diferencia la pone quien llama a `spawn()`, no este script: aquí no se decide
+## quién tiene zarpazo y quién espada.
 ##
 ## Dependencias: presentation -> infrastructure/configuration
 
+## Arco de espada: lo usa el jugador, con o sin arma en la mano.
 const SHEET := "res://assets/fx/slash.png"
+## Zarpazo de bestia: lo usan los enemigos.
+const NPC_SHEET := "res://assets/fx/claw.png"
+
+var sheet_path: String = SHEET
 
 var _sprite: Sprite2D = null
 var _elapsed: float = 0.0
@@ -25,16 +32,31 @@ func _ready() -> void:
 	_sprite.name = "Frames"
 	_sprite.centered = true
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_sprite.texture = load(SHEET) as Texture2D
+	_sprite.texture = load(sheet_path) as Texture2D
 	if _sprite.texture == null:
-		GameLogger.warning("Falta el efecto de golpe (%s)" % SHEET, "SlashEffect")
+		GameLogger.warning("Falta el efecto de golpe (%s)" % sheet_path, "SlashEffect")
 		return
-	# El fotograma del efecto no es cuadrado: es 16 de ancho por 32 de alto, que es lo
-	# que mide un arco de espada. Recortarlo en 16x16 partiría la hoja en dos filas y
-	# el efecto recorrería la de arriba, que está casi vacía.
+	# La hoja es de 128x32 con el fotograma cuadrado de 32x32: cuatro en una fila.
+	# Con la rejilla equivocada (16x32) cada fotograma se parte por la mitad y la
+	# animación sale hecha pedazos sin que salte ningún error, por eso la rejilla
+	# está en `GameConfig` y hay un test que la comprueba contra la hoja.
 	_sprite.hframes = maxi(1, int(round(_sprite.texture.get_width() / GameConfig.FX_FRAME_WIDTH)))
 	_sprite.vframes = maxi(1, int(round(_sprite.texture.get_height() / GameConfig.FX_FRAME_HEIGHT)))
 	add_child(_sprite)
+
+
+## Punto alrededor del que gira el arco, en coordenadas del mundo.
+##
+## El cuerpo se dibuja hacia arriba desde los pies, así que su centro está
+## `ACTOR_SPRITE_OFFSET` por encima del nodo. El arco gira sobre su centro: si se le
+## pone sobre los pies, el golpe lateral sale a la altura de los tobillos y el de
+## arriba se pone encima de la cabeza en vez de delante de ella. De aquí sale la
+## posición; `FX_ORIGIN_OFFSET` es lo que lo separa por delante del cuerpo.
+static func origin_for(body_position: Vector2, direction: Vector2) -> Vector2:
+	var center := body_position + GameConfig.ACTOR_SPRITE_OFFSET
+	if direction.is_zero_approx():
+		return center
+	return center + direction.normalized() * GameConfig.FX_ORIGIN_OFFSET
 
 
 ## Sitúa el efecto y lo orienta hacia donde se ha pegado.
@@ -62,11 +84,21 @@ func _process(delta: float) -> void:
 
 
 ## Crea un efecto en el mundo y lo orienta. Se suelta solo al terminar.
-static func spawn(parent: Node, direction: Vector2, origin: Vector2, z: int = 0) -> SlashEffect:
+##
+## `sheet_path` elige la hoja (`SHEET` para el arco de espada, `NPC_SHEET` para el
+## zarpazo); se fija antes de `add_child` porque es dentro de `_ready()` cuando se lee.
+static func spawn(
+	parent: Node,
+	direction: Vector2,
+	origin: Vector2,
+	z: int = 0,
+	sheet_path: String = SHEET
+) -> SlashEffect:
 	if parent == null or not is_instance_valid(parent):
 		return null
 	var effect := SlashEffect.new()
 	effect.z_index = z
+	effect.sheet_path = sheet_path
 	parent.add_child(effect)
 	effect.face(direction, origin)
 	return effect

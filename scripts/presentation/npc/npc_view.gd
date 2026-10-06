@@ -161,7 +161,7 @@ func set_dead(active: bool) -> void:
 
 func _apply_tint() -> void:
 	if _is_hurt:
-		modulate = Color("ff6b6b")
+		modulate = GameConfig.HURT_TINT
 	elif _is_dead:
 		modulate = Color(0.45, 0.45, 0.5, 0.85)
 	else:

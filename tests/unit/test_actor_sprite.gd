@@ -18,8 +18,9 @@ const SHEETS := {
 	"buho": ["res://assets/characters/owl.png", 4, 4],
 	"arana": ["res://assets/characters/spider_red.png", 4, 4],
 	"lagarto": ["res://assets/characters/lizard.png", 4, 4],
-	# El golpe son ocho fotogramas de 16x16 en dos filas de cuatro. Da igual: solo se
-	# recorren los ocho primeros, que son los de la fila de arriba.
+	# La hoja del efecto mide 128x32, que en celdas de 16 px son 8x2. Ojo: esa no es
+	# su rejilla de dibujo (son cuatro fotogramas de 32x32, que lo comprueba
+	# `_fx_grid`), aquí solo se fija que el archivo siga midiendo lo que mide.
 	"golpe": ["res://assets/fx/slash.png", 8, 2],
 }
 
@@ -28,6 +29,14 @@ const SHEETS := {
 ## el juego el `delta` nunca lo es, y una animación que solo funciona con deltas
 ## justos es una animación que se ve a saltos.
 const STEP := 1.0 / 60.0
+
+## Las cuatro direcciones de golpe, que son las que el juego usa.
+const FX_DIRECTIONS := {
+	"derecha": Vector2.RIGHT,
+	"izquierda": Vector2.LEFT,
+	"arriba": Vector2.UP,
+	"abajo": Vector2.DOWN,
+}
 
 ## Reproductores creados en el caso que se está ejecutando.
 var _alive: Array[ActorSprite] = []
@@ -79,7 +88,9 @@ func register() -> Array:
 		["repetir la misma animación no la reinicia", _replay_is_noop],
 		["un clip desconocido no cambia nada", _unknown_clip],
 		["un enemigo usa su propia fila de golpe", _enemy_attack_row],
-		["el efecto de golpe es una fila de ocho, no dos de ocho", _fx_grid],
+		["el efecto de golpe es una fila de cuatro, y ninguno vacío", _fx_grid],
+		["el arco dura lo que dura el golpe", _fx_duration],
+		["el arco se ancla en el torso y sale por delante", _fx_origin],
 		["ninguna hoja se lee fuera de la rejilla", _frames_stay_in_grid],
 		["la mano cae sobre el cuerpo en las cuatro direcciones", _hand_on_body],
 	]
@@ -359,53 +370,215 @@ func range_array(last: int) -> Array[int]:
 	return values
 
 
-## El fotograma del efecto de golpe no es cuadrado.
+## La rejilla de las hojas de efecto: una fila de fotogramas cuadrados.
 ##
-## La hoja son 128x32 y el fotograma 16 de ancho por 32 de alto: ocho fotogramas en una
-## fila. Recortarla en 16x16 salen 8x2 celdas, y la fila de arriba esta casi vacia: el
-## efecto recorreria fotogramas en blanco y el golpe se veria parpadear. No da ningun
-## error, por eso se comprueba.
+## La hoja del pack mide 128x32 y su `Preview.gif` del pack juega las cuatro celdas
+## de 32 px seguidas (comprobado fotograma a fotograma: coincide al 100 %). Recortada
+## en celdas de 16 px no da ningún error: cada fotograma real se parte por la mitad y
+## la animación sale como un arco, una cola suelta y media hoja en blanco, que es
+## decir "parpadea" sin decir "falla". Por eso aquí se mide la hoja de verdad, y la
+## comprobación fuerte es que ningún fotograma quede vacío: con la rejilla equivocada
+## la mitad de los fotogramas no tienen ni un píxel.
+##
+## Se miden las dos hojas (espada del jugador y zarpazo de los enemigos): son del
+## mismo pack y hoy comparten rejilla, pero nada obliga a que cambien juntas.
 func _fx_grid(ctx: ScriptTestContext) -> void:
-	var path := "res://assets/fx/slash.png"
-	if not ctx.check(ResourceLoader.exists(path), "falta la hoja del efecto de golpe"):
+	_fx_sheet_grid(ctx, SlashEffect.SHEET)
+	_fx_sheet_grid(ctx, SlashEffect.NPC_SHEET)
+
+
+func _fx_sheet_grid(ctx: ScriptTestContext, path: String) -> void:
+	if not ctx.check(ResourceLoader.exists(path), "falta la hoja del efecto (%s)" % path):
 		return
 	var sheet := load(path) as Texture2D
-	if not ctx.check(sheet != null, "la hoja del efecto de golpe no carga"):
+	if not ctx.check(sheet != null, "la hoja del efecto no carga (%s)" % path):
 		return
 	var width := GameConfig.FX_FRAME_WIDTH
 	var height := GameConfig.FX_FRAME_HEIGHT
-	ctx.check(
-		height > width,
-		"el fotograma del efecto es más alto que ancho (%dx%d)" % [width, height]
+	ctx.check_equal(
+		width, height, "el fotograma del efecto es cuadrado (%dx%d)" % [width, height]
 	)
 	ctx.check_equal(
 		int(round(float(sheet.get_width()) / float(width))),
 		GameConfig.FX_FRAMES,
-		"la hoja tiene los ocho fotogramas en horizontal"
+		"la hoja %s se parte en %d fotogramas en horizontal" % [path, GameConfig.FX_FRAMES]
 	)
 	ctx.check_equal(
 		int(round(float(sheet.get_height()) / float(height))),
 		1,
-		"y solo una fila: la hoja no tiene una segunda tanda"
+		"y en una sola fila: la hoja no tiene una segunda tanda (%s)" % path
 	)
 
-	# Y de verdad hay dibujo en casi todos: ocho celdas vacías serían un efecto que no
-	# se ve. Se lee la imagen porque el recorte de `Sprite2D` no se puede inspeccionar
-	# sin montar la escena.
 	var image := sheet.get_image()
 	var empty: Array[int] = []
 	for column: int in range(GameConfig.FX_FRAMES):
 		var painted := 0
-		for y: int in range(height):
-			for x: int in range(width):
-				if image.get_pixel(column * width + x, y).a > 0.05:
+		var left: int = column * width
+		for y: int in range(mini(height, image.get_height())):
+			for x: int in range(mini(width, maxi(0, image.get_width() - left))):
+				if image.get_pixel(left + x, y).a > 0.05:
 					painted += 1
 		if painted == 0:
 			empty.append(column)
 	ctx.check(
-		empty.size() <= 1,
-		"el efecto tiene al menos siete fotogramas con dibujo; vacios: %s" % [empty]
+		empty.is_empty(),
+		"ningún fotograma de la hoja %s puede quedar vacío; vacíos: %s" % [path, empty]
 	)
+
+
+## La vida del efecto contra la duración de la pose de golpe.
+##
+## `FX_FRAMES / FX_FPS` es lo que tarda el arco en irse y `ATTACK_RECOVERY` lo que
+## tarda el cuerpo en cerrar el golpe. Si el arco se alarga, el personaje vuelve a la
+## pose de reposo con el rastro todavía barriendo en el aire; si se acorta, se corta
+## el barrido por la mitad. Ninguna de las dos es un error de código: solo se ve, y
+## por eso tiene que estar medida aquí.
+func _fx_duration(ctx: ScriptTestContext) -> void:
+	var life := float(GameConfig.FX_FRAMES) / GameConfig.FX_FPS
+	var recovery := GameConfig.ATTACK_RECOVERY
+	ctx.check(
+		life <= recovery * 1.25,
+		"el arco dura %.3f s y la pose %.3f s: el rastro se queda barriendo solo" % [
+			life, recovery
+		]
+	)
+	ctx.check(
+		life >= recovery * 0.75,
+		"el arco dura %.3f s y la pose %.3f s: el barrido se corta antes de tiempo" % [
+			life, recovery
+		]
+	)
+
+
+## El arco anclado en el torso y por delante del cuerpo, en las cuatro direcciones.
+##
+## El cuerpo se dibuja hacia arriba desde los pies y el arco gira sobre su centro. Con
+## el centro en los pies el golpe lateral salía a la altura de las piernas y el de
+## arriba se metía encima de la cabeza en vez de delante de ella: ninguna coordenada
+## estaba mal, estaba mal el dibujo, que es la clase de fallo que solo se ve jugando.
+##
+## Por eso aquí no se comprueba una fórmula sino el resultado: se leen los píxeles de
+## la hoja y los del personaje, se coloca el arco como lo coloca el juego (misma
+## `origin_for`, misma rotación) y se mide dónde acaba respecto al cuerpo. Con la
+## geometría vieja (anclada en los pies) este caso fallaba en las direcciones
+## laterales y en la de arriba.
+##
+## Tolerancias: el centro del arco puede bailar 5 px respecto al del cuerpo, que la
+## animación no está centrada fotograma a fotograma ni hace falta; pero el arco tiene
+## que llegar 8 px por delante del cuerpo (media altura del actor) y no arrastrarse
+## por detrás.
+func _fx_origin(ctx: ScriptTestContext) -> void:
+	var body_path: String = SHEETS["jugador"][0]
+	var body := load(body_path) as Texture2D
+	if not ctx.check(body != null, "falta la hoja del jugador para medir el cuerpo"):
+		return
+	for path: String in [SlashEffect.SHEET, SlashEffect.NPC_SHEET]:
+		var sheet := load(path) as Texture2D
+		if not ctx.check(sheet != null, "falta la hoja del efecto (%s)" % path):
+			continue
+		var frames := _fx_cells(sheet)
+		for label: String in FX_DIRECTIONS:
+			var direction: Vector2 = FX_DIRECTIONS[label]
+			var silhouette := _fx_body_cells(body, direction)
+			# Los pies en el origen, que es como vive el actor en el mundo.
+			var origin := SlashEffect.origin_for(Vector2.ZERO, direction)
+			var arc: Array[Vector2i] = []
+			for cells: Array in frames:
+				for point: Vector2i in cells:
+					arc.append(
+						_fx_rotate(point, direction)
+						+ Vector2i(roundi(origin.x), roundi(origin.y))
+					)
+			if not ctx.check(
+				arc.size() > 0 and silhouette.size() > 0,
+				"%s: no hay píxeles que medir en %s" % [path, label]
+			):
+				continue
+			var axis := Vector2i(roundi(direction.x), roundi(direction.y))
+			var cross := Vector2i(-axis.y, axis.x)
+			var body_span := _fx_span(silhouette, axis)
+			var arc_span := _fx_span(arc, axis)
+			var body_cross := _fx_span(silhouette, cross)
+			var arc_cross := _fx_span(arc, cross)
+
+			ctx.check(
+				arc_span[1] >= body_span[1] + 8,
+				"%s mirando a %s: el arco acaba en %d y el cuerpo en %d, y tiene que " % [
+					path.get_file(), label, arc_span[1], body_span[1]
+				] + "llegar 8 px más allá del cuerpo"
+			)
+			ctx.check(
+				arc_span[0] >= body_span[0] - 2,
+				"%s mirando a %s: el arco se cuela %d px por detrás del cuerpo" % [
+					path.get_file(), label, body_span[0] - arc_span[0]
+				]
+			)
+			var arc_mid := float(arc_cross[0] + arc_cross[1]) / 2.0
+			var body_mid := float(body_cross[0] + body_cross[1]) / 2.0
+			ctx.check(
+				absf(arc_mid - body_mid) <= 5.0,
+				"%s mirando a %s: el arco va desplazado %.1f px del centro del cuerpo" % [
+					path.get_file(), label, arc_mid - body_mid
+				]
+			)
+
+
+## Píxeles de cada fotograma de la hoja, centrados en su propio fotograma: así los
+## dibuja `Sprite2D`, que va con `centered = true`.
+func _fx_cells(sheet: Texture2D) -> Array:
+	var image := sheet.get_image()
+	var width := GameConfig.FX_FRAME_WIDTH
+	var height := GameConfig.FX_FRAME_HEIGHT
+	var cells: Array = []
+	for column: int in range(GameConfig.FX_FRAMES):
+		var points: Array[Vector2i] = []
+		var left: int = column * width
+		for y: int in range(mini(height, image.get_height())):
+			for x: int in range(mini(width, maxi(0, image.get_width() - left))):
+				if image.get_pixel(left + x, y).a > 0.05:
+					points.append(Vector2i(x - width / 2, y - height / 2))
+		cells.append(points)
+	return cells
+
+
+## Píxeles del cuerpo con los pies en el origen: fila de la orientación y fotograma
+## de reposo, que es la columna 0, igual que los coloca `ActorSprite` al parar.
+func _fx_body_cells(body: Texture2D, direction: Vector2) -> Array[Vector2i]:
+	var row := GameConfig.ACTOR_ROW_SIDE
+	if direction.y < 0.0:
+		row = GameConfig.ACTOR_ROW_UP
+	elif direction.y > 0.0:
+		row = GameConfig.ACTOR_ROW_DOWN
+	var image := body.get_image()
+	var size := GameConfig.ACTOR_FRAME_SIZE
+	var points: Array[Vector2i] = []
+	for y: int in range(size):
+		for x: int in range(size):
+			if image.get_pixel(x, row * size + y).a > 0.05:
+				points.append(Vector2i(x - size / 2, y - size))
+	return points
+
+
+## Rotación exacta de 90 en 90 grados, sin senos ni cosenos, que redondean.
+func _fx_rotate(point: Vector2i, direction: Vector2) -> Vector2i:
+	if direction == Vector2.RIGHT:
+		return point
+	if direction == Vector2.DOWN:
+		return Vector2i(-point.y, point.x)
+	if direction == Vector2.LEFT:
+		return Vector2i(-point.x, -point.y)
+	return Vector2i(point.y, -point.x)
+
+
+## Recorrido mínimo y máximo de unos píxeles proyectados sobre un eje unitario.
+func _fx_span(points: Array[Vector2i], axis: Vector2i) -> Vector2i:
+	var low := 999999
+	var high := -999999
+	for point: Vector2i in points:
+		var value: int = point.x * axis.x + point.y * axis.y
+		low = mini(low, value)
+		high = maxi(high, value)
+	return Vector2i(low, high)
 
 
 ## El arma tiene que caer sobre el cuerpo, no en el suelo ni por encima de la cabeza.

@@ -248,7 +248,7 @@ func set_dead(active: bool) -> void:
 ## El tinte es como se nota el aturdimiento: el sprite se tiñe entero en vez de
 ## parpadear, que a 16 px y a 60Hz sería ilegible.
 func _apply_tint() -> void:
-	var flash := Color("ff6b6b")
+	var flash := GameConfig.HURT_TINT
 	if _is_hurt:
 		modulate = flash
 	elif _is_dead:

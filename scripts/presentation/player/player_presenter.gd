@@ -151,12 +151,15 @@ func _on_attack_started(weapon: Weapon, direction: Vector2, _window: float) -> v
 		_spawn_slash(direction)
 
 
-## Suelta el efecto de golpe en la mano, no en el centro del cuerpo: es donde se ve
-## el arco de verdad.
+## Suelta el arco por delante del cuerpo, a la altura del torso.
+##
+## El sitio lo decide `SlashEffect.origin_for`, que es el mismo para el jugador y para
+## los enemigos: si cada presentador calculaba su propio origen, las dos animaciones
+## acabarían desalineadas sin que ningún número estuviera mal.
 func _spawn_slash(direction: Vector2) -> void:
 	if _fx_parent == null or _view == null:
 		return
-	var origin := _view.global_position + direction * GameConfig.FX_ORIGIN_OFFSET
+	var origin := SlashEffect.origin_for(_view.global_position, direction)
 	SlashEffect.spawn(_fx_parent, direction, origin)
 
 

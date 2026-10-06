@@ -206,8 +206,8 @@ el dominio y el decor solo mostrará el estado resultante.
       propias y sin des-equipar lo que se lleva en la mano.
 - [x] **NPC**: seis enemigos con `stats`, `state`, `position` y `behavior`, y los
       estados IDLE / WANDER / CHASE / ATTACK / FLEE / DEAD. Ver §8bis.
-- [x] **HUD**: vida, stamina e icono del arma, todo dibujado. La barra de golpe y el
-      inventario no están.
+- [x] **HUD**: vida, stamina, barra de golpe e icono del arma, todo dibujado. Solo
+      falta el inventario.
 - [x] **Muerte y reaparición jugables**: morir bloquea el movimiento, tiñe la
       pantalla y `E` reaparece tras el retraso.
 - [ ] **Inventario**: `add_item`, `remove_item`, `has_item`, `get_quantity`,
@@ -295,8 +295,10 @@ Dos cosas que no están y conviene saber:
 
 - Los enemigos del pack **no tienen fila de golpe propia**: reutilizan la pose de
   frente, así que de lado el fotograma no encaja del todo.
-- Cuando un enemigo golpea **no hay feedback visual**: no sale arco ni destello,
-  solo baja la barra de vida. El arco del jugador sí sale y se borra solo.
+- Cuando un enemigo golpea **sale un zarpazo** en pantalla: el mismo efecto que el
+  arco del jugador, con la hoja de zarpas del pack (`assets/fx/claw.png`), mismo
+  recorte y mismo origen. Al recibir daño, el jugador se tiñe de rojo
+  (`HURT_TINT`) mientras dura la invulnerabilidad.
 
 ## 8quater. El HUD
 
@@ -309,11 +311,15 @@ icono del arma es el propio sprite del arma. El pack trae temas de madera, no el
 | --- | --- |
 | barra de vida | rojo sobre fondo oscuro, se vacía hacia la derecha |
 | barra de stamina | azul, y se vacía mientras más rápido se recupera |
+| barra de golpe | cooldown del arma: **llena = se puede pegar**, vacía = recién golpeado; se llena sola al pasar el cooldown |
 | icono del arma | el sprite del arma equipada; desaparece a puños |
 | pantalla de muerte | tinte rojo sobre todo |
 
-La barra de golpe no llegó a existir: habría que conectarla a `cooldown_ratio` de
-`MeleeCombat` y sigue pendiente.
+La barra de golpe es la última en llegar. Se pinta invertida respecto a
+`cooldown_ratio` de `MeleeCombat` (llena cuando el ratio llega a 0) y el HUD la
+lee por fotograma porque el cooldown no emite señal: es un reloj que corre. Cuando
+vuelve a estar listo, `attack_ready()` la da llena. El HUD consume el caso de uso
+por señales y estado consultado; no decide reglas.
 
 El HUD va en un `CanvasLayer` propio, así que no le afecta ni la cámara ni el zoom.
 Consume el caso de uso por señales: no lee `Health` directamente ni sabe qué es un

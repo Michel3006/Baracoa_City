@@ -12,14 +12,14 @@ la primera tarea concreta.
 
 ## Dónde estamos
 
-**Fase 1 (prototipo offline). Pasos 1 a 10 cerrados, combate, enemigos y sprites
-hechos.**
+**Fase 1 (prototipo offline). Pasos 1 a 10 cerrados, combate, enemigos, sprites,
+HUD de golpe y feedback de golpe de los enemigos hechos. Falta el inventario.**
 
 Última verificación, todo en verde:
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 111/111 pruebas correctas
+# RESULTADO: 113/113 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
@@ -28,10 +28,10 @@ godot --headless --script res://tests/integration/combat_runner.gd
 # RESULTADO: 11/11 pruebas correctas
 
 godot --headless --script res://tests/integration/npc_combat_runner.gd
-# RESULTADO: 18/18 pruebas correctas
+# RESULTADO: 20/20 pruebas correctas
 
 godot --headless --script res://tests/integration/startup_runner.gd
-# RESULTADO: 16/16 pruebas correctas
+# RESULTADO: 17/17 pruebas correctas
 ```
 
 Los enemigos están **desactivados** (`GameConfig.NPC_ENABLED = false`): el juego
@@ -95,21 +95,58 @@ En el juego no pasaba nada. Cuatro cosas distintas, todas invisibles para los te
    el mapa entero sin ver un enemigo.
 3. Uno de los seis había nacido **dentro** de un edificio, en el tile (14, 25), y se
    quedaba encajonado sin poder salir.
-4. El fotograma del efecto de golpe es de 16 x 32, no de 16 x 16. Recortado en
-   cuadrados, el arco se recorría por la fila de arriba de la hoja, que está casi
-   vacía: el golpe parpadeaba en blanco en vez de dibujarse.
+4. El fotograma del efecto de golpe no es 16x16 ni 16x32: es un cuadrado de
+   32x32, y la hoja son 128x32: **cuatro** fotogramas en una sola fila. Recortarla
+   en 16x16 daba ocho celdas por dos filas y el efecto recorría la de arriba, que
+   está casi vacía: el golpe parpadeaba en blanco en vez de dibujarse.
 
-El 4 no lo encontró ningún test: salió de contar píxeles con un script aparte, porque
-una hoja mal recortada no da error, da el efecto equivocado. Los otros tres sí, pero
-solo con casos que miran lo que el jugador ve y no lo que el código devuelve:
+El 4 no lo encontró ningún test: salió de casar la hoja con el `Preview.gif` del
+pack píxel a píxel (coincidencia exacta con la rejilla de 32x32), porque una hoja
+mal recortada no da error, da el efecto equivocado. Los otros tres sí, pero solo
+con casos que miran lo que el jugador ve y no lo que el código devuelve:
 
 - `npc_combat_runner` comprueba que ningún enemigo nace encajonado, y que al aparecer
   hay alguno dentro del rectángulo de la cámara y dentro de su radio de detección.
-- `test_actor_sprite` comprueba la rejilla de cada hoja y que el efecto de golpe tiene
-  ocho fotogramas en horizontal.
+- `test_actor_sprite` comprueba la rejilla de cada hoja, que el efecto de golpe de
+  las dos hojas (arco y zarpas) tiene cuatro fotogramas cuadrados en una sola fila,
+  y que el origen sale del centro del torso en las cuatro direcciones.
 
 **Regla que sale de esto:** una prueba que mira el valor que devuelve el código no
 comprueba que se vea. Para lo que el jugador ve hay que medir la pantalla.
+
+### El arco salía en blanco y anclado en los pies
+
+Dos fallos del mismo efecto, ambos invisibles para las suites mientras se trabajaba
+en el feedback de golpe:
+
+1. **La rejilla equivocada.** Recortada en 16x16, la hoja (128x32) se partía en dos
+   filas y el arco recorría la de arriba, casi vacía: parpadeaba en blanco. Es un
+   cuadrado de 32x32 y son cuatro fotogramas en una sola fila. No lo dijo ningún
+   test: salió de casar la hoja con el `Preview.gif` del pack píxel a píxel
+   (coincidencia exacta). Las dos hojas de efecto, `slash.png` y `claw.png`, se
+   recortan igual.
+2. **El origen en los pies.** El efecto se anclaba en el origen del nodo, que en
+   los personajes está en los pies. Un arco "delante del personaje" puesto desde
+   los pies queda bajo el cuerpo al mirar hacia abajo y mal en transversal hacia
+   los lados. Ahora sale del centro del torso (`ACTOR_SPRITE_OFFSET` (0, -8)) más
+   la dirección por `FX_ORIGIN_OFFSET` (14), vía `SlashEffect.origin_for()`.
+   Medido sobre capturas reales en las cuatro direcciones, el bbox del arco
+   coincide con el previsto con 1-2 px de error, y el efecto se borra solo al
+   acabar el golpe.
+
+**Reglas que salen de esto:**
+
+- **Contar celdas no basta: hay que casar la hoja con una referencia.** Un
+  `Preview.gif` del pack compara el recorte completo píxel a píxel y deshace
+  cualquier duda de rejilla, número de fotogramas o filas.
+- **"Delante del personaje" es delante del torso, no de la raíz del nodo.** Si el
+  arma o el efecto cuelgan del nodo y el nodo está en los pies, lo dibujado se
+  hunde o descuadra. Medir contra el cuerpo, no razonarlo.
+- **Una captura sin efecto puede ser un ataque rechazado, no un fallo del
+  efecto.** En la primera pasada, mirando abajo y arriba no salía el arco: el
+  golpe era legalmente rechazado por cooldown. Bajo `xvfb` el render va sin límite
+  de fps y `process_frame` no es tiempo de juego; para temporizar una secuencia
+  hay que esperar `physics_frame`.
 
 ### La animación no actualizaba hasta que pasaba un ciclo entero
 
@@ -269,11 +306,9 @@ hay `scripts/domain/inventory/` ni `scripts/domain/item/`.
 
 No bloquean nada, pero se notan al jugar:
 
-- **Los enemigos no dan feedback al pegar.** Cuando un NPC golpea al jugador no sale
-  arco ni destello: solo baja la barra de vida. El arco del jugador ya sale y se
-  borra solo, y hay un caso que lo comprueba.
-- **El aturdimiento no tiene lectura visual.** Se aplica (`_on_stun_applied`) pero no
-  se ve.
+- **El aturdimiento no tiene lectura visual.** Se aplica (`_on_stun_applied`) y el
+  sprite tiñe de rojo, pero el rojo es el de la invulnerabilidad: el stun en sí no
+  se distingue.
 - **La muerte no avisa con texto.** El HUD son barras dibujadas, sin letras, porque la
   fuente del sistema sale borrosa a 384x216. Al morir solo se tiñe la pantalla de rojo.
 - **Los enemigos del pack no tienen fila de golpe propia**: reutilizan la pose de
@@ -320,7 +355,7 @@ depender de `GameConfig.NPC_ENABLED` ataría la suite a una bandera.
 ## Comandos
 
 ```bash
-# tests unitarios (111)
+# tests unitarios (113)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)
@@ -329,10 +364,10 @@ godot --headless --script res://tests/integration/world_physics_runner.gd
 # tests de integracion de combate (11)
 godot --headless --script res://tests/integration/combat_runner.gd
 
-# tests de integracion de NPC (18)
+# tests de integracion de NPC (20)
 godot --headless --script res://tests/integration/npc_combat_runner.gd
 
-# tests de integracion de arranque (16)
+# tests de integracion de arranque (17)
 godot --headless --script res://tests/integration/startup_runner.gd
 
 # captura un frame: <salida> [frames] [x] [y] [zoom]
@@ -351,9 +386,18 @@ Tres avisos sobre estos comandos:
   consola significa que algo está mal aunque el resultado sea verde.
 - **`screenshot.gd` no funciona en `--headless`.** El driver de render headless no
   emite `frame_post_draw`, así que el script se queda esperando ahí y hay que
-  matarlo: no deja fichero ni mensaje. Sin `Xvfb` instalado en esta máquina no hay
-  forma de capturar la pantalla. Para revisar los sprites hay que leer las hojas
-  contando píxeles, no mirando una captura.
+  matarlo: no deja fichero ni mensaje. Para capturar hace falta pantalla; en esta
+  máquina se usa `xvfb`:
+
+  ```bash
+  export LC_ALL=C LANG=C
+  xvfb-run -a godot --rendering-driver opengl3 --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 380 1
+  ```
+
+  Dos avisos: bajo `xvfb` el render va sin límite de fps, así que `process_frame`
+  no es tiempo de juego (para temporizar una secuencia hay que esperar
+  `physics_frame`); y una captura se revisa contando píxeles, no mirándola: un
+  `SCRIPT ERROR` y un efecto mal recortado se ven igual de bien en pantalla.
 
 ## Entorno
 
@@ -388,11 +432,12 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
   Los objetivos de golpeo (NPC) tienen que ser `CharacterBody2D`, que además es lo
   natural porque se mueven. `intersect_shape()` sí encuentra los estáticos: no
   fiarse de esa vía para diagnosticar hitboxes.
-- **Los sprites del pack no son cuadrados.** Los personajes son de 16x16, pero el
-  efecto de golpe es de 16 de ancho por 32 de alto, y la hoja son 128x32: ocho
-  fotogramas en una fila. Recortarla en 16x16 da ocho celdas por dos filas y el
-  efecto recorre la fila de arriba, que está casi vacía. `GameConfig` tiene
-  `ACTOR_FRAME_SIZE` y, aparte, `FX_FRAME_WIDTH` / `FX_FRAME_HEIGHT` por eso.
+- **Las hojas de efecto también son cuadradas, pero de 32x32.** La hoja son 128x32:
+  **cuatro** fotogramas en una sola fila, no ocho. Recortarla en 16x16 la parte en
+  dos filas y el efecto recorre la de arriba, que está casi vacía. La rejilla se
+  confirmó casando la hoja con el `Preview.gif` del pack píxel a píxel, no contando
+  celdas. `GameConfig` tiene `FX_FRAME_WIDTH` / `FX_FRAME_HEIGHT` = 32 y
+  `FX_ORIGIN_OFFSET` (14) para sacar el origen desde el centro del torso.
 - **La orientación de las hojas laterales no se puede deducir.** Ver la nota del
   sprite lateral más arriba.
 - **`Sprite2D.centered` mueve el origen del rectángulo dibujado.** Con `centered = true`

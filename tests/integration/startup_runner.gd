@@ -55,6 +55,7 @@ func _run() -> void:
 	await _check("el estado ATTACKING dura la recuperación", _attacking_state_lasts_the_recovery)
 	await _check("al reaparecer el jugador sigue llevando el arma", _weapon_survives_death)
 	await _check("con la zona despejada nada se ata al jugador", _nothing_blocks_the_player)
+	await _check("la barra de golpe sigue el cooldown", _attack_bar_follows_the_cooldown)
 
 	_report()
 	quit(0 if _failed == 0 else 1)
@@ -875,6 +876,51 @@ func _nothing_blocks_the_player() -> void:
 			is_equal_approx(health, 100.0),
 			"el jugador recibió daño yendo por la zona vacía: %.1f de vida" % health
 		)
+
+
+## La barra de golpe sigue el cooldown: se vacía al pegar y se llena sola.
+##
+## El HUD dibuja con `draw_rect`, así que no hay nodo del que leer lo pintado: lo que
+## se mide es `attack_ready()`, que es exactamente el número que `_draw()` convierte
+## en píxeles. Si el caso pasa, la barra pinta eso.
+##
+## Se mide contra el `cooldown_ratio` del caso de uso y no contra un reloj propio del
+## HUD: si cada uno llevara su cuenta, la barra podría mentir mientras el golpe
+## funciona.
+func _attack_bar_follows_the_cooldown() -> void:
+	var hud = _world().hud
+	if not _context.check(hud != null, "el mundo tiene HUD"):
+		return
+	var combat: MeleeCombat = _game().session.combat
+	if not _context.check(combat != null, "la sesión no tiene combate"):
+		return
+
+	# Partida de cero: sin cooldown, sin aturdimiento y con stamina de sobra, para que
+	# si el golpe no sale el motivo sea el que se está midiendo y no otro.
+	combat.grant_invulnerability(0.0)
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	_game().session.player.restore_stamina(float(GameConfig.PLAYER_MAX_STAMINA))
+	await _settle(2)
+	_context.check(
+		hud.attack_ready() >= 0.99,
+		"sin golpe en curso la barra debería estar llena y está en %.2f" % hud.attack_ready()
+	)
+
+	if not _context.check(
+		combat.try_attack(Vector2.RIGHT), "el golpe no sale, el caso no mide nada"
+	):
+		return
+	await _settle(2)
+	_context.check(
+		hud.attack_ready() <= 0.5,
+		"recién pegado la barra se vacía y se ha quedado en %.2f" % hud.attack_ready()
+	)
+
+	await _settle(int(ceil(GameConfig.DEFAULT_ATTACK_COOLDOWN * 60.0)) + 12)
+	_context.check(
+		hud.attack_ready() >= 0.99,
+		"pasado el cooldown la barra vuelve a la llena y se ha quedado en %.2f" % hud.attack_ready()
+	)
 
 
 func _names(nodes: Array) -> String:
