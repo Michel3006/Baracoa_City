@@ -554,6 +554,7 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 | `docs/networking/NETWORKING.md` | diseño server-authoritative de la Fase 2 |
 | `docs/ROADMAP.md` | fases y checklist |
 | `docs/maps/ZONE_001.md` | dimensiones y distribución del mapa de prueba |
+| `docs/assets/TEXTURAS.md` | inventario de texturas: lo que hay, lo que se encarga y su formato exacto |
 
 ## Git
 

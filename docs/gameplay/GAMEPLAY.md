@@ -398,7 +398,8 @@ cuando se confirma; los efectos (que el arma cambie, que la baya cure) los decid
   misma entrada que el resto del juego: los píxeles de la casilla son solo la
   lectura de una decisión que toma el dominio.
 - **La baya se dibuja procedural** (círculo rojo + hoja, 3x5): no hay textura de
-  consumible en el pack. Las armas enseñan su propia textura (`metadata.weapon`).
+  consumible en el pack (el icono opcional está pedido en `docs/assets/TEXTURAS.md`
+  §2.2). Las armas enseñan su propia textura (`metadata.weapon`).
 - **No se abre con el jugador muerto**: gestionar el equipo desde la pantalla de
   muerte no tiene sentido, y pausar el mundo detrás de ella rompería la
   reaparición.

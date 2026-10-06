@@ -75,7 +75,8 @@ Pendientes, que necesitan algo de fuera:
 
 - [ ] **Fila de ataque lateral de los enemigos**: las hojas del pack (64x64) solo
       tienen filas de caminar; el golpe reutiliza la pose frontal. Necesita
-      texturas nuevas (ver la respuesta al usuario) o se deja como está.
+      texturas nuevas — el formato exacto está en `docs/assets/TEXTURAS.md`
+      (§2.1) — o se deja como está.
 - [ ] **Ajuste del enemigo fuerte**: un duro mata a un jugador quieto en ~15 s.
       Dentro de lo razonable; se ajusta con feedback de juego real.
 
