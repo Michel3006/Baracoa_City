@@ -166,7 +166,7 @@ const FX_Z_INDEX := 8
 ## ajuste del MVP va en `GameConfig` (sección 28). Los tests de NPC no lo consultan:
 ## ellos montan su propia zona (ver `npc_combat_runner._ensure_npcs()`), así que esta
 ## bandera puede estar apagada sin que la suite pierda nada.
-const NPC_ENABLED := false
+const NPC_ENABLED := true
 ## Cada cuanto se reparte el objetivo entre los enemigos. Solo reparta, no mueve ningun
 ## reloj, asi que puede ir a su aire sin tocar el ritmo de la IA.
 ##

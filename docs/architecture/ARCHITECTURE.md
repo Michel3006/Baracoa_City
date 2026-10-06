@@ -280,9 +280,9 @@ bajan las de la IA; en el de arranque, con un `MainWorldView` de más en
 `run/main_scene`, bajan el recuento de mundos, la cámara activa y el movimiento.
 
 El runner de enemigos monta su propia zona (`_ensure_npcs()`) en vez de fiarse de que
-el autoload la haya poblado, porque el juego arranca con `GameConfig.NPC_ENABLED`
-apagado. Atar la suite al contenido por defecto del juego es atarla a una bandera, y
-así los 20 casos siguen significando lo mismo se enciendan o apaguen los enemigos.
+el autoload la haya poblado, porque `GameConfig.NPC_ENABLED` puede dejarla vacía. Atar
+la suite al contenido por defecto del juego es atarla a una bandera, y así los 20
+casos siguen significando lo mismo se enciendan o apaguen los enemigos.
 
 `screenshot.gd` acepta `x`, `y` y `zoom`: teletransporta al jugador y ajusta el
 aumento de la camara, lo que permite inspeccionar una zona entera o un elemento

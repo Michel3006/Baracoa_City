@@ -38,9 +38,9 @@ godot --headless --script res://tests/integration/inventory_runner.gd
 # RESULTADO: 5/5 pruebas correctas
 ```
 
-Los enemigos están **desactivados** (`GameConfig.NPC_ENABLED = false`): el juego
-arranca con la zona despejada para poder probar el movimiento y el mapa sin que la IA
-se meta en medio. Para volver a encenderlos, ese `false` a `true`.
+Los enemigos están **activados** (`GameConfig.NPC_ENABLED = true`) para poder
+probar el combate contra la IA al jugar. Si se quiere la zona despejada (probar el
+movimiento y el mapa sin que la IA se meta en medio), ese `true` a `false`.
 
 Los pasos 1 a 10 de la sección 37:
 
