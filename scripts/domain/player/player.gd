@@ -23,6 +23,9 @@ var stats: CharacterStats
 var health: Health
 var stamina: float
 var state: PlayerState.Kind = PlayerState.Kind.IDLE
+## Mochila del jugador (sección 13). El inventario es dominio puro: no sabe nada
+## de gráficos. La UI lo consulta; la capa Application lo engancha al combate.
+var inventory: Inventory
 
 
 func _init(player_id: int = 0, display_name: String = "Player") -> void:
@@ -34,6 +37,7 @@ func _init(player_id: int = 0, display_name: String = "Player") -> void:
 	})
 	health = Health.new(stats.max_health)
 	stamina = GameConfig.PLAYER_START_STAMINA
+	inventory = Inventory.new()
 	health.changed.connect(_on_health_changed)
 	health.depleted.connect(_on_health_depleted)
 
@@ -46,6 +50,14 @@ var is_dead: bool:
 var is_alive: bool:
 	get:
 		return not health.is_dead
+
+
+## Lo que el jugador lleva en la mano según su inventario, o `&""` a puños.
+## Vive en el inventario y se expone aquí porque el modelo del jugador (sección 8)
+## lo lista como campo propio.
+var equipped_item: StringName:
+	get:
+		return &"" if inventory == null else inventory.equipped()
 
 
 var stamina_ratio: float:

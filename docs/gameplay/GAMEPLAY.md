@@ -206,13 +206,14 @@ el dominio y el decor solo mostrará el estado resultante.
       propias y sin des-equipar lo que se lleva en la mano.
 - [x] **NPC**: seis enemigos con `stats`, `state`, `position` y `behavior`, y los
       estados IDLE / WANDER / CHASE / ATTACK / FLEE / DEAD. Ver §8bis.
-- [x] **HUD**: vida, stamina, barra de golpe e icono del arma, todo dibujado. Solo
-      falta el inventario.
+- [x] **HUD**: vida, stamina, barra de golpe e icono del arma, todo dibujado. El
+      inventario no tiene pantalla todavía (los datos sí existen, ver §8quinquies).
 - [x] **Muerte y reaparición jugables**: morir bloquea el movimiento, tiñe la
       pantalla y `E` reaparece tras el retraso.
-- [ ] **Inventario**: `add_item`, `remove_item`, `has_item`, `get_quantity`,
+- [x] **Inventario**: `add_item`, `remove_item`, `has_item`, `get_quantity`,
       `use_item`, `equip_item`, `unequip_item`, con capacidad inicial de 20.
-- [ ] **Objetos**: definición genérica con `type`, `stackable` y `max_stack`,
+      Equipar va del inventario hasta el arma en mano; falta solo la pantalla.
+- [x] **Objetos**: definición genérica con `type`, `stackable` y `max_stack`,
       y la taxonomía WEAPON / CONSUMABLE / MATERIAL / QUEST / CURRENCY /
       CLOTHING / TOOL / MISC.
 
@@ -324,6 +325,37 @@ por señales y estado consultado; no decide reglas.
 El HUD va en un `CanvasLayer` propio, así que no le afecta ni la cámara ni el zoom.
 Consume el caso de uso por señales: no lee `Health` directamente ni sabe qué es un
 jugador.
+
+## 8quinquies. El inventario
+
+El inventario es dominio puro (`scripts/domain/inventory/`): no sabe nada de
+gráficos, la UI lo consulta. Guarda pilas de `Item` con su cantidad — una casilla
+por objeto distinto (20 casillas, `GameConfig.PLAYER_INVENTORY_CAPACITY`) — y
+"la mano" es estado suyo: `equipped()` dice qué se lleva, `&""` a puños.
+
+| operación | qué hace |
+| --- | --- |
+| `add_item(item, n)` | recoge; apila hasta `max_stack` o abre casilla; devuelve lo que entró |
+| `remove_item(id, n)` | quita; al vaciar la pila libera la casilla (y des-equipa si era la mano) |
+| `has_item` / `get_quantity` | consultas |
+| `use_item(id)` | consume una unidad de los consumibles y emite `used` (el efecto es de quien escuche) |
+| `equip_item(id)` / `unequip_item()` | pone o quita el objeto de la mano; solo los WEAPON se equipan |
+
+Los objetos son definiciones (`scripts/domain/item/`): `id`, `name`, `type`
+(WEAPON / CONSUMABLE / MATERIAL / QUEST / CURRENCY / CLOTHING / TOOL / MISC),
+`stackable`, `max_stack` y `metadata`. `ItemCatalog` concreta la piedra, el
+cuchillo y una baya de ejemplo; las armas llevan en `metadata.weapon` el id del
+`WeaponCatalog` que representan.
+
+El cableado inventario -> arma vive en `GameSession`: `equipped_changed` se
+traduce a `MeleeCombat.equip()` (que no se tocó: era el gancho) y la señal
+`weapon_changed` del combate cambia el sprite de la mano. El jugador arranca con
+la piedra equipada por esta vía. El jugador lo lleva al revés:
+`player.equipped_item` se lee del inventario, no al contrario.
+
+Lo que falta es la pantalla: el HUD sigue siendo barras y no dibuja la mochila.
+La consulta para el panel ya existe (`get_entries()` y las señales `changed`,
+`quantity_changed`, `equipped_changed`, `used`).
 
 ## 9. Qué NO debe colarse en el MVP
 

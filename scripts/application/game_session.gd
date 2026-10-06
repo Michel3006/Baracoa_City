@@ -42,6 +42,12 @@ var _links: Array[Array] = []
 func _init() -> void:
 	player = Player.new(1, "Jugador")
 	combat = MeleeCombat.new(player)
+	# El arranque con la piedra en la mano lo dice el inventario, no el combate:
+	# si mañana el jugador empieza con otra cosa, se cambia aquí y no en el caso
+	# de uso. El combate, que ya llevaba la piedra por defecto, la recibe por esta
+	# vía y se queda igual.
+	_link(player.inventory.equipped_changed, _on_inventory_equipped)
+	_seed_starting_inventory()
 	_link(player.state_changed, _forward_state_changed)
 	_link(player.health_changed, _forward_health_changed)
 	_link(player.stamina_changed, _forward_stamina_changed)
@@ -51,6 +57,14 @@ func _init() -> void:
 	_link(combat.attack_finished, _forward_attack_finished)
 	_link(combat.target_hit, _forward_target_hit)
 	_link(combat.damaged, _forward_player_damaged)
+
+
+## La mochila inicial: la piedra, en la mano. `equip_item` dispara la señal que
+## engancha el inventario con el combate (la misma vía que usa un objeto recogido
+## luego), así que esto no es una excepción del arranque sino el primer uso.
+func _seed_starting_inventory() -> void:
+	player.inventory.add_item(ItemCatalog.stone(), 1)
+	player.inventory.equip_item(ItemCatalog.STONE)
 
 
 func _link(source: Signal, target: Callable) -> void:
@@ -102,6 +116,28 @@ func _forward_target_hit(target: Object, amount: float) -> void:
 
 func _forward_player_damaged(amount: float, source: Object) -> void:
 	player_damaged.emit(amount, source)
+
+
+## Traduce lo que el inventario equipa al arma en mano del combate. Es el puente
+## entre la mochila (dominio) y el caso de uso (application): el inventario marca
+## la mano y aquí se decide con qué `Weapon` pega. `MeleeCombat.equip()` no se
+## toca: es el gancho que ya existía.
+func _on_inventory_equipped(item_id: StringName) -> void:
+	if combat == null or player == null or player.inventory == null:
+		return
+	if item_id == &"":
+		combat.equip(WeaponCatalog.unarmed())
+		return
+	var item := player.inventory.get_item(item_id)
+	if item == null:
+		return
+	var weapon_id: Variant = item.metadata.get("weapon", &"")
+	if not (weapon_id is StringName) or not WeaponCatalog.exists(weapon_id):
+		GameLogger.warning(
+			"El objeto %s no tiene arma que equipar" % item_id, "GameSession"
+		)
+		return
+	combat.equip(WeaponCatalog.create(weapon_id))
 
 
 ## Crea el jugador y lo deja listo para jugar en `spawn_position`.

@@ -42,18 +42,22 @@ Base terminada:
       borrosa a 384x216).
 - [x] Muerte y reaparición jugables, con tinte de pantalla y botón de revivir.
 - [x] Tests unitarios headless del dominio, del combate, de los enemigos, de los
-      sprites y de la integridad de scripts (113 pruebas).
+      sprites y de la integridad de scripts (135 pruebas).
 - [x] Tests de integración con física real: colisiones y sincronía
       dominio/vista (6 pruebas).
 - [x] Tests de integración de combate con la hitbox real (11 pruebas).
 - [x] Tests de integración de enemigos: IA, golpe de ida y vuelta, muerte y
       reaparición (20 pruebas).
 - [x] Arranque: la escena principal monta un único mundo funcional (17 pruebas).
+- [x] Tests de integración de inventario: mochila de arranque, equipar hasta el
+      arma en pantalla, des-equipar y consumir (5 pruebas).
 
 Pendiente:
 
-- [ ] Inventario con capacidad y equipar.
-- [ ] Objetos genéricos con tipo y apilado.
+- [x] Inventario con capacidad y equipar: mochila de 20 casillas (una por objeto
+      distinto) y equipar que va del inventario hasta el arma en mano. La
+      pantalla del inventario es un remate, no tablas de dominio.
+- [x] Objetos genéricos con tipo y apilado.
 - [x] Barra de golpe en el HUD: muestra cuándo vuelve a estar listo el golpe.
 - [x] Feedback visual cuando el enemigo golpea: zarpazo en pantalla y tinte rojo
       mientras dura la invulnerabilidad.

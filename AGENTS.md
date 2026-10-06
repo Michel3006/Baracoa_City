@@ -12,14 +12,15 @@ la primera tarea concreta.
 
 ## Dónde estamos
 
-**Fase 1 (prototipo offline). Pasos 1 a 10 cerrados, combate, enemigos, sprites,
-HUD de golpe y feedback de golpe de los enemigos hechos. Falta el inventario.**
+**Fase 1 (prototipo offline) completa: pasos 1 a 10, combate, enemigos, sprites,
+HUD de golpe, feedback de golpe de los enemigos e inventario hechos. Lo que queda
+es pulido y la Fase 2.**
 
 Última verificación, todo en verde:
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 113/113 pruebas correctas
+# RESULTADO: 135/135 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
@@ -32,6 +33,9 @@ godot --headless --script res://tests/integration/npc_combat_runner.gd
 
 godot --headless --script res://tests/integration/startup_runner.gd
 # RESULTADO: 17/17 pruebas correctas
+
+godot --headless --script res://tests/integration/inventory_runner.gd
+# RESULTADO: 5/5 pruebas correctas
 ```
 
 Los enemigos están **desactivados** (`GameConfig.NPC_ENABLED = false`): el juego
@@ -287,24 +291,27 @@ mucho que los píxeles parecieran contradecirse.
 Es la lista de trabajo real. No inventar alcance extra: la especificación ya
 define el orden.
 
-### 1. Inventario y objetos
+### 1. Inventario y objetos — hecho
 
-Lo siguiente, y lo único que falta de la Fase 1. No existe nada de esto todavía: no
-hay `scripts/domain/inventory/` ni `scripts/domain/item/`.
-
-- `Inventory` con `add_item`, `remove_item`, `has_item`, `get_quantity`,
-  `use_item`, `equip_item`, `unequip_item` y capacidad
-  (`GameConfig.PLAYER_INVENTORY_CAPACITY = 20`).
-- `Item` genérico con `type`, `stackable`, `max_stack`, `metadata` y la taxonomía
-  WEAPON / CONSUMABLE / MATERIAL / QUEST / CURRENCY / CLOTHING / TOOL / MISC. No
-  hace falta implementar todos los tipos.
-- El inventario no debe saber nada de gráficos; la UI lo consulta.
-- `MeleeCombat.equip()` ya existe y es el gancho: no tocarlo para añadir inventario.
-  `WeaponCatalog.UNARMED` ya permite combatir sin nada en la mano.
+`Inventory` (add/remove/has/get_quantity, use/equip/unequip, capacidad de **20
+pilas** = 20 objetos distintos) en `scripts/domain/inventory/`; `Item` genérico
+con `type`, `stackable`, `max_stack` y `metadata` y la taxonomía completa en
+`scripts/domain/item/`; `ItemCatalog` con piedra, cuchillo y baya. El inventario
+es dominio puro: la UI lo consulta (`get_entries()`, señales) y no sabe nada de
+gráficos. El cableado inventario -> arma vive en `GameSession._on_inventory_equipped`,
+que traduce `equipped_changed` al `MeleeCombat.equip()` que ya existía (no se
+tocó su API). El jugador arranca con la piedra en la mano vía la semilla del
+inventario, la misma piedra con la que el combate ya empezaba. Lo que falta de
+este frente no es dominio, es pantalla: ver el remate en la sección 2.
 
 ### 2. Remates de lo que ya funciona
 
 No bloquean nada, pero se notan al jugar:
+
+- **El inventario no tiene pantalla.** Los datos y el cableado existen, pero el
+  HUD sigue siendo barras: no se ve la mochila ni se puede abrirla. La UI ya
+  tiene consulta (`inventory.get_entries()` y las señales `changed`,
+  `quantity_changed`, `equipped_changed`) para cuando llegue el panel.
 
 - **El aturdimiento no tiene lectura visual.** Se aplica (`_on_stun_applied`) y el
   sprite tiñe de rojo, pero el rojo es el de la invulnerabilidad: el stun en sí no
@@ -355,7 +362,7 @@ depender de `GameConfig.NPC_ENABLED` ataría la suite a una bandera.
 ## Comandos
 
 ```bash
-# tests unitarios (113)
+# tests unitarios (135)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)
@@ -369,6 +376,9 @@ godot --headless --script res://tests/integration/npc_combat_runner.gd
 
 # tests de integracion de arranque (17)
 godot --headless --script res://tests/integration/startup_runner.gd
+
+# tests de integracion de inventario (5)
+godot --headless --script res://tests/integration/inventory_runner.gd
 
 # captura un frame: <salida> [frames] [x] [y] [zoom]
 godot --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 380 1

@@ -135,6 +135,13 @@ func apply_motion(moved: Vector2) -> void:
 	move_performed.emit(moved)
 
 
+## ¿Se está dibujando un arma en la mano? Los puños no se dibujan, y es lo que
+## distingue a simple vista el golpe sin arma del golpe con arma.
+var is_armed: bool:
+	get:
+		return _is_armed
+
+
 func set_facing(facing: Vector2) -> void:
 	if facing == _facing:
 		return

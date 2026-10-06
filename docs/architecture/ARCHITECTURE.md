@@ -130,6 +130,10 @@ scripts/
 │   ├── combat/weapon.gd            arma con daño, alcance y durabilidad
 │   ├── combat/weapon_catalog.gd    catálogo de armas, incluido el puñetazo
 │   ├── combat/damage_rules.gd      fórmula de daño compartida por ambos lados
+│   ├── item/item_kind.gd           taxonomía de objetos (sección 12)
+│   ├── item/item.gd                definición de objeto (id, tipo, pila, metadata)
+│   ├── item/item_catalog.gd        objetos concretos del MVP
+│   ├── inventory/inventory.gd      mochila: pilas, capacidad y mano (sección 13)
 │   └── npc/
 │       ├── npc_kind.gd             tipos de enemigo (identificadores de dominio)
 │       ├── npc_state.gd            máquina de estados y grafo de transiciones
@@ -169,13 +173,26 @@ tests/
 ├── support/test_runner.gd          runner unitario
 ├── support/screenshot.gd           captura de frame
 ├── support/script_test_context.gd  aserciones
-├── unit/                           14 archivos, 111 pruebas
+├── unit/                           15 archivos, 135 pruebas
 └── integration/
     ├── world_physics_runner.gd     6 pruebas
     ├── combat_runner.gd            11 pruebas
-    ├── npc_combat_runner.gd        18 pruebas
-    └── startup_runner.gd           16 pruebas
+    ├── npc_combat_runner.gd        20 pruebas
+    ├── startup_runner.gd           17 pruebas
+    └── inventory_runner.gd         5 pruebas
 ```
+
+### El inventario y la mano
+
+`Inventory` vive en `scripts/domain/inventory/` y no sabe nada de gráficos:
+guarda pilas de `Item` con su cantidad, una casilla por objeto distinto
+(capacidad `GameConfig.PLAYER_INVENTORY_CAPACITY = 20`). "La mano" es estado del
+propio inventario (`equipped()`), y `Player.equipped_item` se lee de ahí. Cuando
+`equipped_changed` emite, `GameSession` traduce el id al arma (`item.metadata.weapon`
+-> `WeaponCatalog.create`) y llama al `MeleeCombat.equip()` que ya existía; la
+señal `weapon_changed` del combate hace que la vista cambie el sprite de la mano.
+El jugador arranca con la piedra equipada, la misma piedra con la que el combate
+ya empezaba antes de que existiera el inventario.
 
 ### Qué NO hereda el combate del enemigo
 

@@ -34,7 +34,17 @@ const PLAYER_MAX_STAMINA := 100
 const PLAYER_START_STAMINA := 100.0
 const PLAYER_MAX_DEFENSE := 0
 const PLAYER_BASE_DAMAGE := 5
+## Nº de casillas del inventario: una por objeto distinto, con las pilas hasta el
+## `max_stack` de cada objeto.
 const PLAYER_INVENTORY_CAPACITY := 20
+
+# --- Objetos (secciones 12 y 13) ---
+## Nombres visibles de los objetos del MVP. Los valores de las armas (daño,
+## alcance, cooldown) no se repiten aquí: el objeto de arma apunta al `Weapon`
+## correspondiente y solo el catálogo de armas decide cuánto pega.
+const ITEM_STONE_NAME := "Piedra"
+const ITEM_KNIFE_NAME := "Cuchillo"
+const ITEM_BERRY_NAME := "Baya"
 
 # --- Combate ---
 const DEFAULT_ATTACK_COOLDOWN := 0.45
