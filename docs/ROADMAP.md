@@ -10,7 +10,7 @@ PLANNING -> FOUNDATION -> MVP_OFFLINE -> MULTIPLAYER_PROTOTYPE
          -> PERSISTENCE -> WORLD_EXPANSION -> LIFE_SYSTEMS -> MUNICIPALITY
 ```
 
-Estado actual: **MVP_OFFLINE**, en curso.
+Estado actual: **MVP_OFFLINE completo** (remates pendientes + Fase 2).
 
 ## Fase 0 — Preparación ✅
 
@@ -20,7 +20,7 @@ Estado actual: **MVP_OFFLINE**, en curso.
 - [x] Documentación de arquitectura, gameplay, networking y roadmap.
 - [x] Bus de eventos de dominio.
 
-## Fase 1 — Prototipo offline 🚧
+## Fase 1 — Prototipo offline ✅
 
 Base terminada:
 
@@ -42,12 +42,12 @@ Base terminada:
       borrosa a 384x216).
 - [x] Muerte y reaparición jugables, con tinte de pantalla y botón de revivir.
 - [x] Tests unitarios headless del dominio, del combate, de los enemigos, de los
-      sprites y de la integridad de scripts (135 pruebas).
+      sprites y de la integridad de scripts (139 pruebas).
 - [x] Tests de integración con física real: colisiones y sincronía
       dominio/vista (6 pruebas).
 - [x] Tests de integración de combate con la hitbox real (11 pruebas).
 - [x] Tests de integración de enemigos: IA, golpe de ida y vuelta, muerte y
-      reaparición (20 pruebas).
+      reaparición (21 pruebas).
 - [x] Arranque: la escena principal monta un único mundo funcional (17 pruebas).
 - [x] Tests de integración de inventario: mochila de arranque, equipar hasta el
       arma en pantalla, des-equipar y consumir (5 pruebas).
@@ -59,8 +59,9 @@ Pendiente:
       pantalla del inventario es un remate, no tablas de dominio.
 - [x] Objetos genéricos con tipo y apilado.
 - [x] Barra de golpe en el HUD: muestra cuándo vuelve a estar listo el golpe.
-- [x] Feedback visual cuando el enemigo golpea: zarpazo en pantalla y tinte rojo
-      mientras dura la invulnerabilidad.
+- [x] Feedback visual al golpear y al recibir daño: zarpazo/arco en pantalla y la
+      ley del tinte rojo — todo ser que recibe daño se tiñe mientras dura su
+      invulnerabilidad.
 
 ## Fase 2 — Multijugador
 
