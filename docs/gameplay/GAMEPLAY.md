@@ -79,8 +79,11 @@ centrado en el eje del cuerpo tapaba las piernas al caminar hacia abajo.
 ## 3. Cámara
 
 - Sigue al jugador con suavizado exponencial (`FOLLOW_SMOOTHING = 8`).
-- Zoom x3 sobre la resolución base de 384x216, así que la cámara muestra
-  128x72 px del mundo.
+- Zoom configurable por `GameConfig.CAMERA_ZOOM`, con 1,5 sobre la resolución base
+  de 384x216, así que la cámara muestra 256x144 px del mundo (eran 128x72 con el
+  zoom 3 inicial). Ojo: con la ventana escalando el viewport x3, el 1,5 da una
+  escala de 4,5x y los píxeles de mundo no quedan todos del mismo tamaño; los
+  zooms enteros (3, 2, 1) sí los dejan limpios.
 - Límites derivados del rectángulo de la zona: nunca se ve fuera del mapa.
 
 Los límites se recalculan al cargar la zona, así que un mapa mayor no requiere

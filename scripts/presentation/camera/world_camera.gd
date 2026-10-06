@@ -11,7 +11,7 @@ extends Camera2D
 
 const FOLLOW_SMOOTHING := 8.0
 
-@export var zoom_level: float = 3.0
+@export var zoom_level: float = GameConfig.CAMERA_ZOOM
 @export var use_limits: bool = true
 
 var _target: Node2D = null

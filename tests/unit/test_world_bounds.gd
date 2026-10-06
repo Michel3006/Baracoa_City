@@ -46,11 +46,11 @@ func _collision_layers(ctx: ScriptTestContext) -> void:
 	ctx.check(not CollisionLayers.has(mask, CollisionLayers.PLAYER), "la máscara excluye player")
 
 
-## Con zoom x3 la cámara muestra un tercio de la resolución base: 128x72 px.
-## Tiene que caber en la zona para que los límites tengan sentido.
+## Con el zoom configurado (`GameConfig.CAMERA_ZOOM` = 1,5) la cámara muestra
+## 256x144 px. Tiene que caber en la zona para que los límites tengan sentido.
 func _camera_fits_view(ctx: ScriptTestContext) -> void:
 	var camera := WorldCamera.new()
-	camera.zoom_level = 3.0
+	camera.zoom_level = GameConfig.CAMERA_ZOOM
 	var zone := Rect2(Vector2.ZERO, Vector2(1024.0, 640.0))
 	camera.apply_zone_bounds(zone)
 
