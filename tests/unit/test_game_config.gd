@@ -9,6 +9,7 @@ func register() -> Array:
 		["un override cambia el valor leído", _override_applies],
 		["una clave desconocida cae al valor por defecto", _unknown_key_falls_back],
 		["la resolución y la escala son coherentes", _scale_is_consistent],
+		["el aturdimiento tiene su propio tinte", _tints_are_distinct],
 	]
 
 
@@ -48,3 +49,13 @@ func _scale_is_consistent(ctx: ScriptTestContext) -> void:
 	var zone := Vector2(GameConfig.WORLD_ZONE_SIZE) * float(GameConfig.TILE_SIZE)
 	ctx.check_almost_equal(fmod(zone.x, float(GameConfig.TILE_SIZE)), 0.0, "la zona encaja en tiles")
 	ctx.check(zone.x > resolution.x, "la zona es mayor que la pantalla")
+
+
+## El aturdimiento tiene que leerse distinto del daño: si compartieran tinte,
+## un golpe aturdidor pasaría por rojo igual que uno normal y el tinte propio
+## no tendría sentido. El violeta, además, debe ser opaco: un tinte translúcido
+## mostraría el sprite de debajo y leería mezclado.
+func _tints_are_distinct(ctx: ScriptTestContext) -> void:
+	ctx.check(GameConfig.STUN_TINT != GameConfig.HURT_TINT, "el aturdimiento no comparte el rojo del daño")
+	ctx.check(GameConfig.STUN_TINT.a > 0.9, "el violeta del aturdimiento es opaco")
+	ctx.check(GameConfig.HURT_TINT.a > 0.9, "y el rojo de la invulnerabilidad también")

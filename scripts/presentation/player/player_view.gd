@@ -64,6 +64,7 @@ var _facing: Vector2 = Vector2.DOWN
 var _is_walking: bool = false
 var _swing: float = -1.0
 var _is_hurt: bool = false
+var _is_stunned: bool = false
 var _is_dead: bool = false
 var _weapon_texture: Texture2D = null
 var _weapon_sprite: Sprite2D = null
@@ -81,6 +82,7 @@ var _is_armed: bool = false
 func revive() -> void:
 	set_dead(false)
 	set_hurt(false)
+	set_stun(false)
 	_swing = -1.0
 	stop_hitbox()
 	_refresh_animation()
@@ -237,6 +239,15 @@ func set_hurt(active: bool) -> void:
 	_apply_tint()
 
 
+## Aturdimiento: tinte propio (`STUN_TINT`) mientras dura, distinto del rojo de la
+## invulnerabilidad. La señal la emite el cuerpo de combate al aturdir y al expirar.
+func set_stun(active: bool) -> void:
+	if _is_stunned == active:
+		return
+	_is_stunned = active
+	_apply_tint()
+
+
 ## Muerte: el cuerpo queda congelado en el ultimo fotograma.
 func set_dead(active: bool) -> void:
 	if _is_dead == active:
@@ -254,12 +265,18 @@ func set_dead(active: bool) -> void:
 
 ## El tinte es como se nota el aturdimiento: el sprite se tiñe entero en vez de
 ## parpadear, que a 16 px y a 60Hz sería ilegible.
+##
+## Prioridad: muerto > aturdido > herido > normal. El aturdimiento va por delante
+## del rojo porque dura menos que la invulnerabilidad: si el rojo ganara, el
+## aturdimiento no se leería; y cuando el aturdimiento acaba, el rojo vuelve
+## durante lo que quede de la ventana.
 func _apply_tint() -> void:
-	var flash := GameConfig.HURT_TINT
-	if _is_hurt:
-		modulate = flash
-	elif _is_dead:
+	if _is_dead:
 		modulate = Color(0.45, 0.45, 0.5, 0.85)
+	elif _is_stunned:
+		modulate = GameConfig.STUN_TINT
+	elif _is_hurt:
+		modulate = GameConfig.HURT_TINT
 	else:
 		modulate = tint
 

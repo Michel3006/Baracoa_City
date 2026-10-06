@@ -22,6 +22,10 @@ signal damaged(amount: float, source: Object)
 signal invulnerability_changed(active: bool)
 signal weapon_changed(weapon: Weapon)
 signal stun_applied(duration: float)
+## Sube al aturdir y baja al expirar. Es la lectura de la vista: quien la conecta
+## tiñe el sprite con `STUN_TINT` mientras vale `true`, sin tener que consultar
+## el reloj en cada fotograma.
+signal stun_changed(active: bool)
 
 const REASON_DEAD := &"dead"
 const REASON_BUSY := &"busy"
@@ -233,8 +237,11 @@ func grant_invulnerability(duration: float = GameConfig.INVULNERABILITY_TIME) ->
 func apply_stun(duration: float = GameConfig.HURT_STUN_TIME) -> void:
 	if duration <= 0.0 or player == null or player.is_dead:
 		return
+	var was_stunned := is_stunned
 	_stun_remaining = maxf(_stun_remaining, duration)
 	stun_applied.emit(duration)
+	if not was_stunned:
+		stun_changed.emit(true)
 	player.transition_to(PlayerState.Kind.HURT)
 
 
@@ -288,8 +295,10 @@ func advance(delta: float) -> void:
 
 	if _stun_remaining > 0.0:
 		_stun_remaining = maxf(0.0, _stun_remaining - delta)
-		if _stun_remaining <= 0.0 and player.state == PlayerState.Kind.HURT:
-			player.transition_to(PlayerState.Kind.IDLE)
+		if _stun_remaining <= 0.0:
+			stun_changed.emit(false)
+			if player.state == PlayerState.Kind.HURT:
+				player.transition_to(PlayerState.Kind.IDLE)
 
 	_advance_stamina(delta)
 

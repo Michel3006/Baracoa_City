@@ -29,6 +29,9 @@ signal target_hit(target: Object, damage: float)
 signal damaged(amount: float, source: Object)
 signal invulnerability_changed(active: bool)
 signal died()
+## Sube al aturdir y baja al expirar, igual que en `MeleeCombat`. La vista lo
+## usa para teñir el cuerpo con `STUN_TINT` mientras el NPC está aturdido.
+signal stun_changed(active: bool)
 
 var npc: Npc
 var behavior: NpcBehavior
@@ -192,7 +195,10 @@ func apply_stun(duration: float = -1.0) -> void:
 	var time := behavior.hurt_stun_time if duration < 0.0 else duration
 	if time <= 0.0 or npc == null or npc.is_dead:
 		return
+	var was_stunned := is_stunned
 	_stun_remaining = maxf(_stun_remaining, time)
+	if not was_stunned:
+		stun_changed.emit(true)
 
 
 ## Consume el reloj: cooldown, ventana, aturdimiento e invulnerabilidad.
@@ -215,3 +221,5 @@ func advance(delta: float) -> void:
 			invulnerability_changed.emit(false)
 	if _stun_remaining > 0.0:
 		_stun_remaining = maxf(0.0, _stun_remaining - delta)
+		if _stun_remaining <= 0.0:
+			stun_changed.emit(false)

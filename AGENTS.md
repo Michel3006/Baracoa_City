@@ -12,15 +12,16 @@ la primera tarea concreta.
 
 ## Dónde estamos
 
-**Fase 1 (prototipo offline) completa: pasos 1 a 10, combate, enemigos, sprites,
-HUD de golpe, feedback de golpe de los enemigos e inventario hechos. Lo que queda
-es pulido y la Fase 2.**
+**Fase 1 (prototipo offline) terminada: pasos 1 a 10, combate, enemigos, sprites,
+HUD, feedback de golpe, inventario y los remates de UI (pantalla de la mochila,
+aturdimiento con tinte propio, muerte con texto). Quedan dos remates que dependen
+de cosas de fuera (texturas y play-test) y la Fase 2.**
 
 Última verificación, todo en verde:
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 139/139 pruebas correctas
+# RESULTADO: 148/148 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
@@ -35,7 +36,7 @@ godot --headless --script res://tests/integration/startup_runner.gd
 # RESULTADO: 17/17 pruebas correctas
 
 godot --headless --script res://tests/integration/inventory_runner.gd
-# RESULTADO: 5/5 pruebas correctas
+# RESULTADO: 9/9 pruebas correctas
 ```
 
 Los enemigos están **activados** (`GameConfig.NPC_ENABLED = true`) para poder
@@ -291,7 +292,7 @@ mucho que los píxeles parecieran contradecirse.
 Es la lista de trabajo real. No inventar alcance extra: la especificación ya
 define el orden.
 
-### 1. Inventario y objetos — hecho
+### 1. Inventario y objetos — hecho, incluida la pantalla
 
 `Inventory` (add/remove/has/get_quantity, use/equip/unequip, capacidad de **20
 pilas** = 20 objetos distintos) en `scripts/domain/inventory/`; `Item` genérico
@@ -301,34 +302,35 @@ es dominio puro: la UI lo consulta (`get_entries()`, señales) y no sabe nada de
 gráficos. El cableado inventario -> arma vive en `GameSession._on_inventory_equipped`,
 que traduce `equipped_changed` al `MeleeCombat.equip()` que ya existía (no se
 tocó su API). El jugador arranca con la piedra en la mano vía la semilla del
-inventario, la misma piedra con la que el combate ya empezaba. Lo que falta de
-este frente no es dominio, es pantalla: ver el remate en la sección 2.
+inventario, la misma piedra con la que el combate ya empezaba.
+
+La pantalla es `InventoryPanel` (`scripts/presentation/ui/inventory_panel.gd`):
+una `Control` a pantalla completa en su propia `CanvasLayer` sobre el HUD, dibujada
+con `draw_rect` y `PixelFont`. Abre y cierra con `Tab` (`toggle_inventory`),
+**pausa el árbol** mientras está abierta (va en `PROCESS_MODE_ALWAYS` para seguir
+oyendo la entrada), navega con los ejes de movimiento, y `E` confirma: equipa si
+es WEAPON, consume si es CONSUMABLE. `Esc` no la cierra ni la abre: es la tecla
+de salir del juego. Puede que el panel deba cerrarse solo si algo más pausa el
+mundo — el cierre explícito está en `game.gd` (freno del teletransporte/cierre).
 
 ### 2. Remates de lo que ya funciona
 
-No bloquean nada, pero se notan al jugar:
+Hechos en el cierre de Fase 1: pantalla de la mochila (§1 de esta lista), tinte
+propio de aturdimiento (`STUN_TINT`, violeta, distinto del rojo de la
+invulnerabilidad, vía señal `stun_changed` de los cuerpos de combate) y muerte
+con texto ("CAIDO / E PARA REVIVIR" con `PixelFont`).
 
-- **El inventario no tiene pantalla.** Los datos y el cableado existen, pero el
-  HUD sigue siendo barras: no se ve la mochila ni se puede abrirla. La UI ya
-  tiene consulta (`inventory.get_entries()` y las señales `changed`,
-  `quantity_changed`, `equipped_changed`) para cuando llegue el panel.
+Quedan dos, y los dos necesitan algo de fuera:
 
-- **El aturdimiento no tiene lectura visual.** Se aplica (`_on_stun_applied`) y el
-  sprite tiñe de rojo, pero el rojo es el de la invulnerabilidad: el stun en sí no
-  se distingue.
-- **La muerte no avisa con texto.** El HUD son barras dibujadas, sin letras, porque la
-  fuente del sistema sale borrosa a 384x216. Al morir solo se tiñe la pantalla de rojo.
-- **Los enemigos del pack no tienen fila de golpe propia**: reutilizan la pose de
-  frente, así que al atacar de lado el fotograma no encaja del todo. Está anotado en
-  `ActorVisualCatalog.attack_row_of`.
-- **La orientación del sprite lateral es una constante, no un hecho.** Las dos filas
-  laterales de las hojas son imágenes especulares la una de la otra, así que no se
-  puede deducir de los píxeles cuál es mirar a la izquierda y cuál a la derecha. Está
-  en `GameConfig.ACTOR_ROW_SIDE` y `ACTOR_ROW_SIDE_MIRRORED`: si al jugar el
-  personaje lateral va del revés, se intercambian esos dos números y no hay que tocar
-  ningún otro archivo.
-- **Un enemigo fuerte mata a un jugador quieto** en unos 15 s. Dentro de lo
-  razonable, pero no se ha ajustado jugando.
+- **La fila de golpe lateral de los enemigos.** Los enemigos del pack no tienen
+  fila de ataque propia: reutilizan la pose de frente, así que al atacar de lado
+  el fotograma no encaja del todo. Está anotado en
+  `ActorVisualCatalog.attack_row_of`. Necesita texturas nuevas (hojas de ataque
+  de los cuatro tipos) — ver la respuesta al usuario. Si llegan, el recorte irá a
+  `GameConfig` como el resto.
+- **El enemigo fuerte mata a un jugador quieto en unos 15 s.** Dentro de lo
+  razonable, pero no se ha ajustado jugando. Se ajusta con feedback real (basta
+  un número en `GameConfig`).
 
 ### 3. Tests de lo que se añada
 
@@ -342,6 +344,18 @@ Si lo que se toca es el arranque, lo que se mueve o lo que se ve, el sitio es
 solo mundo y por eso los cuatro suites possono estar en verde con el juego roto. Y si
 un runner necesita enemigos, que los monte él (`npc_combat_runner._ensure_npcs()`):
 depender de `GameConfig.NPC_ENABLED` ataría la suite a una bandera.
+
+Tres casos de este cierre conviene recordarlos como patrón:
+
+- `test_pixel_font.gd` prueba el núcleo de datos de la fuente (`lit_pixels`,
+  `measure`) sin tocar ningún `CanvasItem`: la lista de píxeles es el dibujo.
+- Los casos del panel en `inventory_runner.gd` corren sobre el **mismo mundo**:
+  unos dejan la mochila con el cuchillo equipado y otros sin vida; cada caso que
+  asuma un estado (por ejemplo "la primera casilla es la piedra") tiene que
+  dejarlo preparado él mismo, no fiarse de lo que dejen los demás.
+- Los casos de tinte de `npc_combat_runner.gd` miden la secuencia completa
+  violeta -> rojo -> normal avanzando los relojes a mano, porque con los
+  presentadores apagados nada avanza el stun.
 
 ## Reglas que no se negocian
 
@@ -362,7 +376,7 @@ depender de `GameConfig.NPC_ENABLED` ataría la suite a una bandera.
 ## Comandos
 
 ```bash
-# tests unitarios (139)
+# tests unitarios (148)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)
@@ -377,7 +391,7 @@ godot --headless --script res://tests/integration/npc_combat_runner.gd
 # tests de integracion de arranque (17)
 godot --headless --script res://tests/integration/startup_runner.gd
 
-# tests de integracion de inventario (5)
+# tests de integracion de inventario (9)
 godot --headless --script res://tests/integration/inventory_runner.gd
 
 # captura un frame: <salida> [frames] [x] [y] [zoom]
@@ -495,6 +509,41 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
   integración que apagan los presentadores y luego atacan con el combate del
   enemigo tienen que limpiar el reloj primero (`combat.advance(...)`): si no, el
   `try_attack` del propio enemigo se rechaza por stun.
+- **`set_anchors_preset(PRESET_FULL_RECT)` no da tamaño a un `Control` cuyo padre
+  es una `CanvasLayer`**: se queda en 0x0 (medido en el árbol real). Todo lo que
+  se dibuje con `size` —overlays a pantalla completa, texto centrado— no sale.
+  De hecho el velo rojo de la muerte **nunca llegó a dibujarse** por esto, y un
+  overlay `Rect2(Vector2.ZERO, size)` con tamaño 0 no pinta nada ni avisa. Tanto
+  `Hud` como `InventoryPanel` fijan `size = get_viewport_rect().size` en el
+  `_ready()`; el proyecto es de resolución fija (384x216), así que no hay que
+  reaccionar a redimensionamientos.
+- **Los textos del juego van con `PixelFont`** (`scripts/presentation/ui/pixel_font.gd`),
+  una mini fuente de glifos 3x5 dibujada con `draw_rect` de 1x1. La del sistema
+  sale borrosa a 384x216. Cubre A-Z, 0-9 y `! ? . - : ( )`; lo desconocido cae en
+  `?`. El núcleo comprobable es `lit_pixels(text)`, que devuelve la lista de
+  píxeles sin tocar ningún `CanvasItem`; `draw()` solo recorre esa lista. El
+  espacio ocupa una celda entera (3 px + separación), igual que una letra, para
+  que `measure()` no tenga casos raros: la segunda letra de "A A" arranca en x=8.
+- **La mochila pausa el mundo mientras está abierta** (`get_tree().paused`), y el
+  panel va en `PROCESS_MODE_ALWAYS` para seguir oyendo la entrada. Abre y cierra
+  con `toggle_inventory` (Tab), navega con los ejes de movimiento y confirma con
+  `interact` (E): equipa si WEAPON, consume si CONSUMABLE. Se come las
+  pulsaciones (`set_input_as_handled`) para que el jugador no avance ni ataque
+  mientras gestiona el equipo, y **`Esc` no la cierra**: `ui_cancel` sigue
+  cerrando el juego desde el autoload, que recibe el evento antes. No se abre con
+  el jugador muerto.
+- **La señal de aturdimiento sube al aturdir y baja al expirar**
+  (`stun_changed(active)` en `MeleeCombat` y `NpcCombat`), y solo avisa del cruce:
+  un segundo `apply_stun()` mientras ya está aturdido no repite el `true`. La
+  vista pinta con prioridad **muerto > aturdido (`STUN_TINT` violeta) > herido
+  (`HURT_TINT` rojo) > normal**: el aturdimiento dura menos que la
+  invulnerabilidad, así que el rojo gana cuando el stun expira sin perder la
+  lectura del golpe.
+- **Una señal con argumentos no se conecta a un método de 0 argumentos**:
+  `equipped_changed(item_id)` conectado a `queue_redraw` fallaba en caliente con
+  "Method expected 0 argument(s), but called with 1" en cada señal, y el
+  resultado seguía verde. Cualquier conexión con firma distinta necesita un
+  wrapper; y un error por consola no es una suite verde (la regla de siempre).
 
 ## Documentación relacionada
 
@@ -508,6 +557,8 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 
 ## Git
 
-El repositorio **no tenía ningún commit** al escribir este archivo. Si sigue así,
-el commit inicial incluye la especificación, la estructura, los scripts, las
-escenas, los tests y la documentación.
+El repositorio vive en `main`. El commit inicial (`2ee61e0`) incluye la
+especificación, la estructura, los scripts, las escenas, los tests y la
+documentación; el cierre de Fase 1 (remates de UI) le sigue en los commits con
+mensaje referente al "cierre de Fase 1 (remates de UI)". Cada incremento se
+commitea y se empuja a `main` con los tests en verde.

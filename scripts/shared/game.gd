@@ -154,6 +154,8 @@ func _on_player_spawned(player: PlayerView) -> void:
 		player.combat_target = session.combat
 	if world_view.hud != null:
 		world_view.hud.bind(session)
+	if world_view.inventory_panel != null:
+		world_view.inventory_panel.bind(session)
 	GameLogger.info(
 		"Jugador listo en %s (%d NPC en la zona)" % [
 			player.global_position,

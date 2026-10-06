@@ -31,6 +31,9 @@ var player: PlayerView = null
 var presenter: PlayerPresenter = null
 var camera: WorldCamera = null
 var hud: Hud = null
+## Pantalla de la mochila, en su propia capa por encima del HUD. Arranca
+## cerrada e invisible; la abre el jugador con `toggle_inventory`.
+var inventory_panel: InventoryPanel = null
 var npc_spawner: NpcSpawner = null
 
 ## Nodo contenedor de los efectos de golpe. Vive aquí y no dentro del jugador.
@@ -42,6 +45,7 @@ func _ready() -> void:
 	_build_camera()
 	_build_fx_layer()
 	_build_hud()
+	_build_inventory()
 	_spawn_player(GameConfig.PLAYER_SPAWN)
 
 
@@ -75,6 +79,17 @@ func _build_hud() -> void:
 	hud = Hud.new()
 	hud.name = "Hud"
 	layer.add_child(hud)
+
+
+## La mochila vive en una `CanvasLayer` aparte, añadida después del HUD para que
+## se dibuje encima. No se mueve con la cámara por la misma razón que el HUD.
+func _build_inventory() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "UiLayer"
+	add_child(layer)
+	inventory_panel = InventoryPanel.new()
+	inventory_panel.name = "Inventory"
+	layer.add_child(inventory_panel)
 
 
 func _spawn_player(spawn_position: Vector2) -> void:

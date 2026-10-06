@@ -38,6 +38,7 @@ var _facing: Vector2 = Vector2.DOWN
 var _is_walking: bool = false
 var _is_attacking: bool = false
 var _is_hurt: bool = false
+var _is_stunned: bool = false
 var _is_dead: bool = false
 var _actor: ActorSprite = null
 
@@ -147,6 +148,15 @@ func set_hurt(active: bool) -> void:
 	_apply_tint()
 
 
+## Aturdimiento: tinte propio (`STUN_TINT`) mientras dura, igual que en el
+## jugador. La señal la emite `NpcCombat` al aturdir y al expirar.
+func set_stun(active: bool) -> void:
+	if _is_stunned == active:
+		return
+	_is_stunned = active
+	_apply_tint()
+
+
 ## Muerte: quieto, apagado y con la hitbox apagada para que no siga golpeando.
 func set_dead(active: bool) -> void:
 	if _is_dead == active:
@@ -162,10 +172,12 @@ func set_dead(active: bool) -> void:
 
 
 func _apply_tint() -> void:
-	if _is_hurt:
-		modulate = GameConfig.HURT_TINT
-	elif _is_dead:
+	if _is_dead:
 		modulate = Color(0.45, 0.45, 0.5, 0.85)
+	elif _is_stunned:
+		modulate = GameConfig.STUN_TINT
+	elif _is_hurt:
+		modulate = GameConfig.HURT_TINT
 	else:
 		modulate = tint
 

@@ -45,6 +45,11 @@ var _attack_width: int = -1
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Bajo una `CanvasLayer` los anchors no dan tamaño (medido: queda 0x0), y todo
+	# lo que se dibuja con `size` —el overlay de muerte, el texto centrado— no sale.
+	# El proyecto es de resolución fija, así que se fija el tamaño del viewport y se
+	# acaba: nada más lo necesita, salvo que un día se haga responsive.
+	size = get_viewport_rect().size
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
 
@@ -108,6 +113,7 @@ func _show_weapon(weapon: Weapon) -> void:
 func _draw() -> void:
 	if _is_down:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.35, 0.0, 0.0, GameConfig.HUD_DOWN_TINT))
+		_draw_death_text()
 	var margin := GameConfig.HUD_BAR_MARGIN
 	var bar := GameConfig.HUD_BAR_SIZE
 
@@ -133,6 +139,28 @@ func _draw() -> void:
 			margin.x + bar.x + GameConfig.HUD_BAR_GAP,
 			margin.y + GameConfig.HUD_WEAPON_SIZE.y * 0.5
 		)
+	)
+
+
+## Pantalla de muerte: la causa, en la fuente del proyecto, y la tecla que revive.
+## Las dos líneas se centran sobre el velo rojo; la segunda va más apagada para que
+## la lectura sea "esto ha pasado" y luego "esto se hace".
+func _draw_death_text() -> void:
+	var title := GameConfig.HUD_DEATH_TEXT
+	var hint := GameConfig.HUD_DEATH_HINT
+	var title_width := PixelFont.measure(title).x
+	var hint_width := PixelFont.measure(hint).x
+	PixelFont.draw(
+		self,
+		Vector2i(int((size.x - title_width) * 0.5), 96),
+		title,
+		Color("ffd9d9")
+	)
+	PixelFont.draw(
+		self,
+		Vector2i(int((size.x - hint_width) * 0.5), 108),
+		hint,
+		Color(0.85, 0.6, 0.6, 0.85)
 	)
 
 

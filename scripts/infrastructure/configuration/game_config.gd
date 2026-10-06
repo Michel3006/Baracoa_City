@@ -226,11 +226,43 @@ const HUD_DOWN_TINT := 0.28
 ## 384x216 es mover cuatro píxeles. Lo comparten el jugador y los enemigos, así que
 ## va aquí y no dentro de ninguna de las dos vistas.
 const HURT_TINT := Color("ff6b6b")
+## Tinte del cuerpo mientras dura el aturdimiento, distinto del rojo de la
+## invulnerabilidad. Un golpe deja al ser aturdido (unos decimas) y luego rojo
+## (lo que quede de la ventana): los dos estados se leen al instante sin confundirse.
+## Si se apagara el rojo mientras dura el aturdimiento, un golpe aturdidor pasaría
+## sin tinte hasta el final de la ventana.
+const STUN_TINT := Color("a78bfa")
+
+# --- Inventario (UI, seccion 13) ---
+## Rejilla de la mochila. Las casillas son cuadradas; el numero de filas sale de la
+## capacidad (`INVENTORY_COLS` por capacidad), asi que cambiar la capacidad no deja
+## la rejilla descuadrada.
+const INVENTORY_COLS := 5
+const INVENTORY_SLOT := 14
+const INVENTORY_GAP := 2
+const INVENTORY_PAD := 4
+## Altura de la zona del titulo del panel, sobre la rejilla.
+const INVENTORY_HEADER := 10
+## Textos del panel. Son contenido, no cableado: viven aqui como los nombres de los
+## objetos.
+const INVENTORY_TITLE := "MOCHILA"
+## Colores del panel: fondo y borde, casilla, y los dos anillos de estado.
+const INVENTORY_BG := Color(0.07, 0.1, 0.09, 0.96)
+const INVENTORY_BORDER := Color(0.35, 0.45, 0.4, 1.0)
+const INVENTORY_SLOT_BG := Color(0.12, 0.16, 0.14, 1.0)
+const INVENTORY_SELECTED := Color("f0c05a")
+const INVENTORY_EQUIPPED := Color("7cf0a8")
+const INVENTORY_TEXT := Color("d9e6df")
+const INVENTORY_OVERLAY := Color(0.0, 0.0, 0.0, 0.5)
 
 # --- Muerte y reaparición (sección 8) ---
 ## Tiempo tras morir hasta que el botón de revivir hace algo. Sin espera, un botón
 ## mantenido devolvería la vida al instante y se perdería la lectura de qué pasó.
 const RESPAWN_DELAY := 1.0
+## Texto de la pantalla de muerte. Se dibuja con la mini fuente de píxeles del
+## proyecto, no con la del sistema: la del sistema sale borrosa a 384x216.
+const HUD_DEATH_TEXT := "CAIDO"
+const HUD_DEATH_HINT := "E PARA REVIVIR"
 
 # --- Networking (Fase 2) ---
 const SERVER_PORT := 27015

@@ -22,6 +22,7 @@ func register() -> Array:
 		["take_damage respeta la ventana de invulnerabilidad", _take_damage_respects_invulnerability],
 		["el cuerpo de combate es un objetivo válido para DamageRules", _combat_body_is_damageable],
 		["un cuerpo de combate muerto ya no es objetivo", _dead_combat_body_ignored],
+		["la señal de aturdimiento sube y baja", _stun_signal_sube_y_baja],
 	]
 
 
@@ -74,3 +75,19 @@ func _dead_combat_body_ignored(ctx: ScriptTestContext) -> void:
 	ctx.check(combat.npc.is_dead, "el enemigo parte muerto")
 	ctx.check(not DamageRules.is_damageable(combat), "un cuerpo de combate muerto no es objetivo")
 	ctx.check_equal(combat.take_damage(5.0), 0.0, "y tampoco recibe daño")
+
+
+## La señal es lo que pinta el tinte violeta en la vista del NPC: sube al aturdir
+## y baja al expirar, igual que en `MeleeCombat`.
+func _stun_signal_sube_y_baja(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var changes: Array[bool] = []
+	combat.stun_changed.connect(func(active: bool) -> void: changes.append(active))
+
+	combat.take_damage(3.0)
+	ctx.check_equal(changes, [true], "al aturdir avisa de que sube")
+	ctx.check(combat.is_stunned, "y el reloj lo confirma")
+
+	combat.advance(combat.npc.behavior.hurt_stun_time + DELTA)
+	ctx.check_equal(changes, [true, false], "al expirar avisa de que baja")
+	ctx.check(not combat.is_stunned, "y ya no está aturdido")

@@ -13,12 +13,15 @@ realidad.
 | Mover | `WASD` o flechas |
 | Golpear con el arma | `Espacio` o clic izquierdo |
 | Golpear a puños | `F` o clic derecho |
+| Abrir / cerrar la mochila | `Tab` (pausa el mundo mientras está abierta) |
+| Navegar la mochila | `WASD` o flechas |
+| Confirmar en la mochila | `E` (equipa si es arma, consume si es consumible) |
 | Reaparecer | `E` (solo tras morir, pasado el retraso) |
 | Cerrar el juego | `Esc` |
 
 Las acciones de entrada están declaradas en `project.godot` con nombres estables
 (`move_up`, `move_down`, `move_left`, `move_right`, `attack`, `attack_unarmed`,
-`interact`) para que reasignarlas no afecte al código.
+`interact`, `toggle_inventory`) para que reasignarlas no afecte al código.
 
 Las dos formas de golpear son independientes a propósito. Se puede pegar a puños
 con algo en la mano: el golpe desarmado **no des-equipa** el arma, usa su propio
@@ -49,7 +52,8 @@ que explica también el caso de las dos filas laterales especulares.
 
 `MovementController.block_for(segundos)` inmoviliza al jugador. Lo llama el
 presentador cuando `MeleeCombat` avisa de un aturdimiento, así que el jugador no
-puede moverse mientras está HURT.
+puede moverse mientras está HURT. El aturdimiento se lee en pantalla con el tinte
+violeta propio (`STUN_TINT`), distinto del rojo de la invulnerabilidad — ver §8bis.
 
 ### El arma en la mano
 
@@ -206,13 +210,14 @@ el dominio y el decor solo mostrará el estado resultante.
       propias y sin des-equipar lo que se lleva en la mano.
 - [x] **NPC**: seis enemigos con `stats`, `state`, `position` y `behavior`, y los
       estados IDLE / WANDER / CHASE / ATTACK / FLEE / DEAD. Ver §8bis.
-- [x] **HUD**: vida, stamina, barra de golpe e icono del arma, todo dibujado. El
-      inventario no tiene pantalla todavía (los datos sí existen, ver §8quinquies).
+- [x] **HUD**: vida, stamina, barra de golpe e icono del arma, todo dibujado con
+      la mini fuente de píxeles del proyecto cuando hace falta texto. Ver §8quater.
 - [x] **Muerte y reaparición jugables**: morir bloquea el movimiento, tiñe la
-      pantalla y `E` reaparece tras el retraso.
+      pantalla, avisa con "CAIDO — E PARA REVIVIR" y `E` reaparece tras el retraso.
 - [x] **Inventario**: `add_item`, `remove_item`, `has_item`, `get_quantity`,
       `use_item`, `equip_item`, `unequip_item`, con capacidad inicial de 20.
-      Equipar va del inventario hasta el arma en mano; falta solo la pantalla.
+      Equipar va del inventario hasta el arma en mano; la pantalla de la mochila
+      está hecha (ver §8sexies).
 - [x] **Objetos**: definición genérica con `type`, `stackable` y `max_stack`,
       y la taxonomía WEAPON / CONSUMABLE / MATERIAL / QUEST / CURRENCY /
       CLOTHING / TOOL / MISC.
@@ -311,12 +316,22 @@ golpear. Antes el jugador se teñía y el enemigo no: el golpe del jugador llama
 (invulnerabilidad, aturdimiento y señal). Ahora la vista de cada ser expone su
 cuerpo de combate (`combat_target`), y el daño siempre entra por ahí.
 
+El aturdimiento tiene su propio tinte para no confundirse con el daño: al recibir
+un golpe, el cuerpo queda **violeta (`STUN_TINT`) mientras dura el stun** y luego
+**rojo** durante lo que quede de la invulnerabilidad. La secuencia se lee al
+instante ("me acaban de aturdir" y luego "sigo herido") y la emite el cuerpo de
+combate con la señal `stun_changed(active)`, que sube al aturdir y baja al
+expirar. Prioridad de tintes: muerto > aturdido > herido > normal.
+
 ## 8quater. El HUD
 
-El HUD es todo dibujo, **sin una sola letra**. La fuente del sistema sale borrosa a
-384x216 y rompería el pixel art, así que las barras se pintan con `draw_rect` y el
-icono del arma es el propio sprite del arma. El pack trae temas de madera, no el
-`ThemeRed` del que salen los nueve-patch de Godot, así que tampoco hay panel.
+El HUD es todo dibujo, sin texturas de tema: las barras se pintan con `draw_rect`
+y el icono del arma es el propio sprite del arma. Los textos que hacen falta
+(título y cantidades de la mochila, pantalla de muerte) se dibujan con la mini
+fuente de píxeles del proyecto (`PixelFont`, glifos de 3x5 de `#` y `.`): la del
+sistema sale borrosa a 384x216 y rompería el pixel art. El pack trae temas de
+madera, no el `ThemeRed` del que salen los nueve-patch de Godot, así que tampoco
+hay panel.
 
 | elemento | qué muestra |
 | --- | --- |
@@ -324,7 +339,7 @@ icono del arma es el propio sprite del arma. El pack trae temas de madera, no el
 | barra de stamina | azul, y se vacía mientras más rápido se recupera |
 | barra de golpe | cooldown del arma: **llena = se puede pegar**, vacía = recién golpeado; se llena sola al pasar el cooldown |
 | icono del arma | el sprite del arma equipada; desaparece a puños |
-| pantalla de muerte | tinte rojo sobre todo |
+| pantalla de muerte | tinte rojo sobre todo y "CAIDO / E PARA REVIVIR" centrado |
 
 La barra de golpe es la última en llegar. Se pinta invertida respecto a
 `cooldown_ratio` de `MeleeCombat` (llena cuando el ratio llega a 0) y el HUD la
@@ -363,9 +378,32 @@ traduce a `MeleeCombat.equip()` (que no se tocó: era el gancho) y la señal
 la piedra equipada por esta vía. El jugador lo lleva al revés:
 `player.equipped_item` se lee del inventario, no al contrario.
 
-Lo que falta es la pantalla: el HUD sigue siendo barras y no dibuja la mochila.
-La consulta para el panel ya existe (`get_entries()` y las señales `changed`,
-`quantity_changed`, `equipped_changed`, `used`).
+## 8sexies. La mochila (la pantalla)
+
+`InventoryPanel` (`scripts/presentation/ui/inventory_panel.gd`) es la pantalla del
+inventario: una `Control` a pantalla completa en su propia `CanvasLayer`, encima
+del HUD, dibujada entera con `draw_rect` y `PixelFont`. No decide reglas:
+consulta `get_entries()` para enseñar y llama a `equip_item()` / `use_item()`
+cuando se confirma; los efectos (que el arma cambie, que la baya cure) los decide
+`GameSession` escuchando las señales, como siempre.
+
+- **Se abre y se cierra con `Tab`** (`toggle_inventory`) y **pausa el árbol**
+  (`get_tree().paused`): el mundo se queda quieto mientras se gestiona el equipo.
+  El panel va en `PROCESS_MODE_ALWAYS` para seguir recibiendo la entrada pausado.
+- **La rejilla sale de la capacidad**: 5 columnas (`INVENTORY_COLS`), las filas
+  que hagan falta (20 casillas = 4 filas), con anillo dorado en la selección y
+  anillo verde en lo equipado. Nada de números mágicos: tamaños, separaciones,
+  títulos y colores viven en `GameConfig`.
+- **El confirmar (`E`) equipa si es arma y consume si es consumible**, por la
+  misma entrada que el resto del juego: los píxeles de la casilla son solo la
+  lectura de una decisión que toma el dominio.
+- **La baya se dibuja procedural** (círculo rojo + hoja, 3x5): no hay textura de
+  consumible en el pack. Las armas enseñan su propia textura (`metadata.weapon`).
+- **No se abre con el jugador muerto**: gestionar el equipo desde la pantalla de
+  muerte no tiene sentido, y pausar el mundo detrás de ella rompería la
+  reaparición.
+- **`Esc` no la cierra**: `Esc` sigue cerrando el juego desde el autoload
+  (`ui_cancel`); la mochila tiene su propia tecla a propósito.
 
 ## 9. Qué NO debe colarse en el MVP
 

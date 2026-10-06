@@ -49,6 +49,7 @@ func setup(view: NpcView, npc: Npc, brain: NpcBrain, combat: NpcCombat) -> void:
 		_combat.attack_started.connect(_on_attack_started)
 		_combat.attack_window_closed.connect(_on_attack_window_closed)
 		_combat.attack_finished.connect(_on_attack_finished)
+		_combat.stun_changed.connect(_on_stun_changed)
 		_combat.invulnerability_changed.connect(_on_invulnerability_changed)
 		_combat.died.connect(_on_died)
 
@@ -174,6 +175,10 @@ func _on_attack_finished() -> void:
 
 func _on_invulnerability_changed(active: bool) -> void:
 	_view.set_hurt(active)
+
+
+func _on_stun_changed(active: bool) -> void:
+	_view.set_stun(active)
 
 
 func _on_died() -> void:

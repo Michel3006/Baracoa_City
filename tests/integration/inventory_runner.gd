@@ -33,6 +33,10 @@ func _run() -> void:
 	await _check("des-equipar deja las manos vacías y a puños", _unequip_sends_unarmed)
 	await _check("usar un consumible lo consume de la sesión", _use_consumes_from_session)
 	await _check("equipar lo que no existe se rechaza y no toca el arma", _equip_missing_fails)
+	await _check("la mochila se abre, pausa el mundo y se cierra", _panel_opens_pauses_and_closes)
+	await _check("la mochila navega, equipa y usa lo seleccionado", _panel_selects_and_uses)
+	await _check("Tab abre y cierra la mochila por la entrada real", _panel_toggles_with_tab)
+	await _check("la mochila no se abre con el jugador muerto", _panel_refuses_when_dead)
 
 	_report()
 	quit(0 if _failed == 0 else 1)
@@ -194,3 +198,122 @@ func _equip_missing_fails() -> void:
 		session.combat.weapon.id, before_weapon, "el arma no cambia"
 	)
 	_context.check_equal(reasons, [Inventory.REASON_NOT_FOUND], "con su motivo")
+
+
+func _panel() -> InventoryPanel:
+	var game := _game()
+	if game == null or game.world_view == null:
+		return null
+	return game.world_view.inventory_panel
+
+
+## La mochila es la pantalla del remate: existe en el árbol, arranca cerrada, y al
+## abrirla pausa el mundo (el jugador no avanza mientras gestiona el equipo) y lo
+## reanuda al cerrarla. Se comprueba también que la rejilla tiene el tamaño
+## configurado y que no se puede abrir dos veces.
+func _panel_opens_pauses_and_closes() -> void:
+	var panel := _panel()
+	_context.check(panel != null, "la mochila existe en el árbol")
+	if panel == null:
+		return
+	_context.check(not panel.is_open, "arranca cerrada")
+	_context.check(not panel.visible, "y oculta")
+	_context.check(panel.open(), "se abre")
+	_context.check(panel.is_open, "está abierta")
+	_context.check(panel.visible, "y se ve")
+	_context.check(self.paused, "y pausa el mundo")
+	_context.check_equal(
+		panel.slot_rect(0).size,
+		Vector2(GameConfig.INVENTORY_SLOT, GameConfig.INVENTORY_SLOT),
+		"las casillas son del tamaño configurado"
+	)
+	_context.check(not panel.open(), "una segunda apertura se rechaza")
+	panel.close()
+	_context.check(not panel.is_open, "se cierra")
+	_context.check(not self.paused, "y reanuda el mundo")
+
+
+## La cadena de pantalla: la rejilla enseña lo que hay (piedra equipada, cuchillo,
+## bayas por cantidad), la selección navega y el confirmar equipa las armas y
+## consume los consumibles por la misma vía que pediría la tecla.
+func _panel_selects_and_uses() -> void:
+	var session := _session()
+	var panel := _panel()
+	_context.check(session != null and panel != null, "mochila y sesión presentes")
+	if session == null or panel == null:
+		return
+	var bag := session.player.inventory
+	# La suite corre sobre el mismo mundo y los casos anteriores dejan cosas en la
+	# mochila (el cuchillo del caso de equipar, de hecho): se la deja en un estado
+	# conocido para que el caso no dependa de lo que dejen los demás.
+	bag.remove_item(ItemCatalog.STONE, 99)
+	bag.remove_item(ItemCatalog.KNIFE, 99)
+	bag.add_item(ItemCatalog.stone(), 1)
+	bag.equip_item(ItemCatalog.STONE)
+	_context.check_equal(bag.add_item(ItemCatalog.knife(), 1), 1, "cae un cuchillo")
+	_context.check_equal(bag.add_item(ItemCatalog.berry(), 3), 3, "cayeron tres bayas")
+	_context.check(panel.open(), "se abre la mochila")
+
+	var stone := panel.entry_at(0)
+	_context.check_equal(stone.get("id", &""), ItemCatalog.STONE, "la primera casilla es la piedra")
+	_context.check(stone.get("equipped", false), "y está marcada como equipada")
+	_context.check_equal(panel.entry_at(1).get("id", &""), ItemCatalog.KNIFE, "la segunda es el cuchillo")
+	_context.check_equal(panel.entry_at(2).get("quantity", 0), 3, "la tercera son tres bayas")
+
+	panel.move_selection(Vector2i(1, 0))
+	_context.check(panel.confirm_selected(), "se confirma el cuchillo")
+	_context.check_equal(session.player.equipped_item, ItemCatalog.KNIFE, "el inventario lo equipa")
+	for _i: int in range(4):
+		await physics_frame
+	_context.check_equal(session.combat.weapon.id, WeaponCatalog.KNIFE, "el combate pasa al cuchillo")
+
+	panel.move_selection(Vector2i(1, 0))
+	_context.check(panel.confirm_selected(), "se confirma una baya")
+	_context.check_equal(bag.get_quantity(ItemCatalog.BERRY), 2, "y una baya se consume")
+	panel.close()
+	_context.check(not self.paused, "al cerrar reanuda el mundo")
+
+
+## La entrada de verdad: un `InputEventKey` sintético entra por `_unhandled_input`
+## igual que lo mandaría el motor con una pulsación real. Es la red que ata la
+## acción del proyecto con el panel: si la acción desaparece o el panel deja de
+## leerla, esto lo dice.
+func _panel_toggles_with_tab() -> void:
+	var panel := _panel()
+	_context.check(panel != null, "mochila presente")
+	if panel == null:
+		return
+	_context.check(InputMap.has_action(&"toggle_inventory"), "la acción existe en el proyecto")
+	var tab := InputEventKey.new()
+	tab.physical_keycode = KEY_TAB
+	tab.pressed = true
+	panel._unhandled_input(tab)
+	_context.check(panel.is_open, "Tab abre la mochila")
+	_context.check(panel.visible, "y la enseña")
+	_context.check(self.paused, "pausando el mundo")
+	var confirm := InputEventKey.new()
+	confirm.physical_keycode = KEY_E
+	confirm.pressed = true
+	panel._unhandled_input(confirm)
+	_context.check(not Input.is_key_pressed(KEY_E), "el confirmar se come la pulsación")
+	panel._unhandled_input(tab)
+	_context.check(not panel.is_open, "Tab la cierra")
+	_context.check(not self.paused, "y reanuda el mundo")
+
+
+## No tiene sentido gestionar el equipo desde la pantalla de muerte, y pausar el
+## mundo detrás de ella rompería la reaparición: la mochila se niega a abrirse.
+func _panel_refuses_when_dead() -> void:
+	var session := _session()
+	var panel := _panel()
+	_context.check(session != null and panel != null, "mochila y sesión presentes")
+	if session == null or panel == null:
+		return
+	session.player.take_damage(session.player.health.maximum)
+	_context.check(session.player.is_dead, "el jugador está sin vida")
+	_context.check(not panel.open(), "la mochila no se abre muerto")
+	_context.check(not self.paused, "y el mundo sigue en marcha")
+	session.respawn()
+	_context.check(not session.player.is_dead, "y revive")
+	_context.check(panel.open(), "revivido ya puede abrirla")
+	panel.close()

@@ -547,9 +547,18 @@ func _player_flashes_when_hurt() -> void:
 		_session().player.health.current < before,
 		"y le quita vida (%.1f -> %.1f)" % [before, _session().player.health.current]
 	)
+	# El aturdimiento dura menos que la invulnerabilidad: recién golpeado, el cuerpo
+	# se tiñe de violeta (aturdido) y al expirar el aturdimiento vuelve el rojo.
+	_context.check(
+		body.modulate.is_equal_approx(GameConfig.STUN_TINT),
+		"recién aturdido el cuerpo se tiñe de violeta y está en %s" % str(body.modulate)
+	)
+
+	_combat().advance(GameConfig.HURT_STUN_TIME + DELTA)
+	await _settle(2)
 	_context.check(
 		body.modulate.is_equal_approx(GameConfig.HURT_TINT),
-		"recibido el golpe el cuerpo se tiñe de rojo y está en %s" % str(body.modulate)
+		"al acabar el aturdimiento se tiñe de rojo y está en %s" % str(body.modulate)
 	)
 
 	# Y se apaga: pasada la invulnerabilidad vuelve a su tinte.
@@ -602,9 +611,18 @@ func _npc_flashes_when_hurt() -> void:
 	_context.check(
 		combat.is_invulnerable, "el golpe pasó por el cuerpo de combate del enemigo"
 	)
+	# Igual que el jugador: violeta mientras dura el aturdimiento y rojo al expirarlo,
+	# porque el aturdimiento dura menos que la invulnerabilidad.
+	_context.check(
+		view.modulate.is_equal_approx(GameConfig.STUN_TINT),
+		"recién aturdido el enemigo se tiñe de violeta y está en %s" % str(view.modulate)
+	)
+
+	combat.advance(combat.npc.behavior.hurt_stun_time + DELTA)
+	await _settle(2)
 	_context.check(
 		view.modulate.is_equal_approx(GameConfig.HURT_TINT),
-		"recibido el golpe el enemigo se tiñe de rojo y está en %s" % str(view.modulate)
+		"al acabar el aturdimiento el enemigo se tiñe de rojo y está en %s" % str(view.modulate)
 	)
 
 	# Y se apaga: pasada la invulnerabilidad vuelve a su tinte.

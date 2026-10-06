@@ -10,7 +10,8 @@ PLANNING -> FOUNDATION -> MVP_OFFLINE -> MULTIPLAYER_PROTOTYPE
          -> PERSISTENCE -> WORLD_EXPANSION -> LIFE_SYSTEMS -> MUNICIPALITY
 ```
 
-Estado actual: **MVP_OFFLINE completo** (remates pendientes + Fase 2).
+Estado actual: **Fase 1 (MVP_OFFLINE) cerrada** — remates de UI hechos; quedan los
+dos remates que dependen de texturas/play-test y la Fase 2.
 
 ## Fase 0 — Preparación ✅
 
@@ -42,26 +43,41 @@ Base terminada:
       borrosa a 384x216).
 - [x] Muerte y reaparición jugables, con tinte de pantalla y botón de revivir.
 - [x] Tests unitarios headless del dominio, del combate, de los enemigos, de los
-      sprites y de la integridad de scripts (139 pruebas).
+      sprites y de la integridad de scripts (148 pruebas).
 - [x] Tests de integración con física real: colisiones y sincronía
       dominio/vista (6 pruebas).
 - [x] Tests de integración de combate con la hitbox real (11 pruebas).
 - [x] Tests de integración de enemigos: IA, golpe de ida y vuelta, muerte y
       reaparición (21 pruebas).
 - [x] Arranque: la escena principal monta un único mundo funcional (17 pruebas).
-- [x] Tests de integración de inventario: mochila de arranque, equipar hasta el
-      arma en pantalla, des-equipar y consumir (5 pruebas).
+- [x] Tests de integración de inventario: mochila de arranque, la pantalla de la
+      mochila (abrir/pausar, navegar, equipar, consumir, Tab) y la muerte (9
+      pruebas).
 
-Pendiente:
+## Remates de Fase 1
 
-- [x] Inventario con capacidad y equipar: mochila de 20 casillas (una por objeto
-      distinto) y equipar que va del inventario hasta el arma en mano. La
-      pantalla del inventario es un remate, no tablas de dominio.
-- [x] Objetos genéricos con tipo y apilado.
-- [x] Barra de golpe en el HUD: muestra cuándo vuelve a estar listo el golpe.
-- [x] Feedback visual al golpear y al recibir daño: zarpazo/arco en pantalla y la
-      ley del tinte rojo — todo ser que recibe daño se tiñe mientras dura su
-      invulnerabilidad.
+Hechos en el cierre de la fase:
+
+- [x] **Pantalla de la mochila**: panel a pantalla completa sobre el HUD con la
+      rejilla, selección por teclado, confirmar con `E`, equipado marcado en
+      verde y cantidades con la mini fuente. Abrir pausa el mundo; se cierra con
+      la misma tecla. Ver §8sexies de `GAMEPLAY.md`.
+- [x] **Aturdimiento legible**: tinte violeta propio (`STUN_TINT`) mientras dura
+      el stun, distinto del rojo de la invulnerabilidad. Vía señal
+      `stun_changed(active)` de los cuerpos de combate.
+- [x] **Muerte con texto**: pantalla de muerte con "CAIDO / E PARA REVIVIR" en la
+      mini fuente `PixelFont` (la del sistema sale borrosa a 384x216). De paso se
+      arregló el velo rojo, que nunca llegó a dibujarse: bajo una `CanvasLayer`
+      los anchors no dan tamaño al `Control` y el overlay usaba `Rect2(ZERO, size)`
+      vacío (ver AGENTS.md).
+
+Pendientes, que necesitan algo de fuera:
+
+- [ ] **Fila de ataque lateral de los enemigos**: las hojas del pack (64x64) solo
+      tienen filas de caminar; el golpe reutiliza la pose frontal. Necesita
+      texturas nuevas (ver la respuesta al usuario) o se deja como está.
+- [ ] **Ajuste del enemigo fuerte**: un duro mata a un jugador quieto en ~15 s.
+      Dentro de lo razonable; se ajusta con feedback de juego real.
 
 ## Fase 2 — Multijugador
 

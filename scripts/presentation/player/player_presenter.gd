@@ -52,6 +52,7 @@ func setup(view: PlayerView, movement: MovementController, combat: MeleeCombat =
 		_combat.attack_finished.connect(_on_attack_finished)
 		_combat.weapon_changed.connect(_on_weapon_changed)
 		_combat.stun_applied.connect(_on_stun_applied)
+		_combat.stun_changed.connect(_on_stun_changed)
 		_combat.invulnerability_changed.connect(_on_invulnerability_changed)
 		# Los enemigos golpean a este nodo a través de la capa PLAYER, así que
 		# necesita saber a quién avisa. El objetivo es el cuerpo de combate y no el
@@ -188,3 +189,8 @@ func _on_stun_applied(duration: float) -> void:
 func _on_invulnerability_changed(active: bool) -> void:
 	if _view != null:
 		_view.set_hurt(active)
+
+
+func _on_stun_changed(active: bool) -> void:
+	if _view != null:
+		_view.set_stun(active)

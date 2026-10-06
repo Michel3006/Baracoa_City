@@ -35,6 +35,8 @@ func register() -> Array:
 		["la stamina se recupera tras el retraso", _stamina_regen],
 		["sin stamina no se ataca", _no_stamina_no_attack],
 		["recibir daño aturde y da invulnerabilidad", _hurt_stuns],
+		["la señal de aturdimiento sube y baja", _stun_signal_sube_y_baja],
+		["un aturdimiento ya activo no repite el aviso", _stun_repetido_no_duplica],
 		["la invulnerabilidad expira", _invulnerability_expires],
 		["mientras es invulnerable no recibe daño", _invulnerable_blocks],
 		["un objetivo muerto no recibe golpe", _dead_target_ignored],
@@ -191,6 +193,37 @@ func _hurt_stuns(ctx: ScriptTestContext) -> void:
 
 	combat.advance(GameConfig.HURT_STUN_TIME + DELTA)
 	ctx.check_equal(combat.player.state, PlayerState.Kind.IDLE, "el aturdimiento expira")
+
+
+## La vista pinta el aturdimiento con su propio tinte siguiendo esta señal: si no
+## avisara de la bajada, el cuerpo se quedaría violeta para siempre.
+func _stun_signal_sube_y_baja(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var changes: Array[bool] = []
+	combat.stun_changed.connect(func(active: bool) -> void: changes.append(active))
+
+	combat.receive_damage(5.0)
+	ctx.check_equal(changes, [true], "al aturdir avisa de que sube")
+	ctx.check(combat.is_stunned, "y el reloj lo confirma")
+
+	combat.advance(GameConfig.HURT_STUN_TIME + DELTA)
+	ctx.check_equal(changes, [true, false], "al expirar avisa de que baja")
+	ctx.check(not combat.is_stunned, "y ya no está aturdido")
+
+
+## La señal solo avisa del cruce: un segundo `apply_stun` mientras el primero
+## sigue vigente no puede repetir el `true`, o la vista repintaría sin necesidad
+## y los tests que cuentan avisos empezarían a fallar sin saber por qué.
+func _stun_repetido_no_duplica(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var changes: Array[bool] = []
+	combat.stun_changed.connect(func(active: bool) -> void: changes.append(active))
+
+	combat.receive_damage(5.0)
+	combat.apply_stun()
+	combat.apply_stun()
+	ctx.check_equal(changes, [true], "un solo aviso de subida")
+	ctx.check(combat.is_stunned, "sigue aturdido")
 
 
 func _invulnerability_expires(ctx: ScriptTestContext) -> void:
