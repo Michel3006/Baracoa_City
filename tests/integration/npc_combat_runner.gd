@@ -58,6 +58,7 @@ func _run() -> void:
 	await _check("el NPC golpea al jugador", _npc_hits_player)
 	await _check("el golpe del NPC deja ver el arco", _npc_slash_spawns)
 	await _check("al recibir daño el jugador se tiñe de rojo", _player_flashes_when_hurt)
+	await _check("al recibir daño el enemigo se tiñe de rojo", _npc_flashes_when_hurt)
 	await _check("el presentador del NPC golpea sin ayuda", _npc_presenter_strikes_player)
 	await _check("la invulnerabilidad protege al jugador", _player_invulnerable)
 	await _check("la invulnerabilidad del NPC aguanta", _npc_invulnerable)
@@ -241,8 +242,8 @@ func _npcs_have_bodies() -> void:
 				actor.texture != null, "el sprite del enemigo %d no cargó" % npc.id
 			)
 		_context.check(
-			view.combat_target == npc,
-			"el enemigo %d no expone su cuerpo de dominio" % npc.id
+			view.combat_target == _combat_of(npc),
+			"el enemigo %d no expone su cuerpo de combate" % npc.id
 		)
 
 
@@ -427,6 +428,10 @@ func _npc_hits_player() -> void:
 	var combat := _combat_of(npc)
 	if not _context.check(combat != null, "el enemigo no tiene combate propio"):
 		return
+	# Reloj a cero: al golpearlo el jugador en un caso anterior, el enemigo quedó
+	# aturdido e invulnerable (su presentador está apagado, así que nada avanza su
+	# reloj). Sin esta limpieza su propio `try_attack` se rechazaría.
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
 
 	var before := _session().player.health.current
 	# Se golpea con el cuerpo de combate del jugador, que es lo que expone su vista.
@@ -556,9 +561,63 @@ func _player_flashes_when_hurt() -> void:
 	)
 
 
+## El revés de `_player_flashes_when_hurt`: el enemigo también se tiñe mientras dura
+## su invulnerabilidad. Es la misma ley para todos los seres del juego.
+##
+## Antes la vista del NPC exponía el `Npc` del dominio como objetivo, y el golpe del
+## jugador llamaba a `take_damage` sobre él: sin pasar por `NpcCombat` no había
+## invulnerabilidad, no había señal y el enemigo nunca se teñía. Ahora expone el
+## cuerpo de combate, y aquí se mide la cadena entera: golpe -> hitbox -> NpcCombat
+## -> señal -> presentador -> `modulate`, que es lo que se ve en pantalla.
+func _npc_flashes_when_hurt() -> void:
+	var npc := _healthy_npc()
+	if not _context.check(npc != null, "no hay enemigo con vida"):
+		return
+	var view := await _bring_npc_close(npc)
+	if not _context.check(view != null, "el enemigo no tiene cuerpo"):
+		return
+	var combat := _combat_of(npc)
+	if not _context.check(combat != null, "el enemigo no tiene combate propio"):
+		return
+	# Relojes a cero: los casos anteriores han golpeado a este enemigo (o a su
+	# combate) y no se puede medir el destello con la ventana ya abierta.
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	_reset_player_combat()
+	await _settle(2)
+	_context.check(
+		not combat.is_invulnerable, "el enemigo parte sin invulnerabilidad"
+	)
+	_context.check(
+		view.modulate.is_equal_approx(view.tint),
+		"sin daño reciente el enemigo está con su tinte normal, no con el rojo (%s)" % str(view.modulate)
+	)
+
+	var before := npc.health.current
+	_presenter().set_physics_process(true)
+	_context.check(_combat().try_attack(Vector2.RIGHT), "el golpe sale")
+	await _settle(4)
+	_presenter().set_physics_process(false)
+
+	_context.check(npc.health.current < before, "el enemigo no perdió vida")
+	_context.check(
+		combat.is_invulnerable, "el golpe pasó por el cuerpo de combate del enemigo"
+	)
+	_context.check(
+		view.modulate.is_equal_approx(GameConfig.HURT_TINT),
+		"recibido el golpe el enemigo se tiñe de rojo y está en %s" % str(view.modulate)
+	)
+
+	# Y se apaga: pasada la invulnerabilidad vuelve a su tinte.
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	await _settle(2)
+	_context.check(
+		view.modulate.is_equal_approx(view.tint),
+		"pasada la invulnerabilidad el tinte se apaga y queda en %s" % str(view.modulate)
+	)
+
+
 ## El mismo golpe, pero ejecutado por el presentador con la física puesta: la hitbox
 ## del enemigo tiene que ver al jugador de verdad, no una lista que le pasa el test.
-##
 ## Se le da un margen de varios fotogramas porque aquí manda el reloj del caso de uso:
 ## el enemigo necesita su cooldown a cero antes de que su IA le deje pegar.
 func _npc_presenter_strikes_player() -> void:

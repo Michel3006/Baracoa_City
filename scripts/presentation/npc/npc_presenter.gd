@@ -35,8 +35,11 @@ func setup(view: NpcView, npc: Npc, brain: NpcBrain, combat: NpcCombat) -> void:
 	if _view == null or _npc == null:
 		return
 	# La hitbox del jugador busca cuerpos en la capa NPC y lee `combat_target`:
-	# sin esto el golpe del jugador no encontraría a quién golpear.
-	_view.combat_target = _npc
+	# sin esto el golpe del jugador no encontraría a quién golpear. Se expone el
+	# cuerpo de combate, no el `Npc` del dominio: así el daño entra por `take_damage`
+	# de `NpcCombat` y respeta la invulnerabilidad, el aturdimiento y el tinte rojo.
+	# Es la misma ley que el jugador, que expone su `MeleeCombat`.
+	_view.combat_target = _combat
 	_view.set_kind(_npc.kind)
 	_view.global_position = _npc.position
 	_view.move_speed = _npc.behavior.move_speed
@@ -77,7 +80,10 @@ func _sync_state() -> void:
 		_view.set_dead(true)
 		return
 	_view.set_dead(false)
-	_view.set_hurt(_combat.is_invulnerable and not _combat.is_stunned)
+	# Rojo = invulnerabilidad, la lectura universal de "acabo de recibir daño".
+	# No lo apaga el aturdimiento: si se aturde al recibir el golpe, el tinte tiene
+	# que seguir durante toda la ventana, como le pasa al jugador.
+	_view.set_hurt(_combat.is_invulnerable)
 	# El NPC mira al objetivo mientras lo persigue o lo ataca, y adonde va mientras
 	# pasea. Sin esto seguiría mirando al frente mientras se aleja.
 	if _brain.has_target and _npc.state in [NpcState.Kind.CHASE, NpcState.Kind.ATTACK]:

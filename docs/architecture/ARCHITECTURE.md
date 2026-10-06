@@ -202,6 +202,24 @@ arrastraría un `Player` y un `Weapon` que no le sirven. Lo que sí comparten so
 reglas de daño, y eso vive en `DamageRules`, que recibe un objetivo con la forma
 `take_damage` / `is_dead` / `stats` sin saber de qué clase es.
 
+### La entrada de daño es única: el cuerpo de combate
+
+Los dos casos de uso exponen un `take_damage(amount)` con el mismo contrato: la
+cantidad ya viene calculada por el atacante (`DamageRules.compute` contra la
+defensa de este cuerpo), y este método lo que hace es respetar la ventana de
+invulnerabilidad, aturdir y emitir `invulnerability_changed`. Las vistas exponen
+ese cuerpo de combate en `combat_target` (el jugador su `MeleeCombat`, el NPC su
+`NpcCombat`), así que ningún golpe puede saltarse la ventana llamando a
+`take_damage` sobre el `Player` o el `Npc` pelado.
+
+De ahí sale la **ley del tinte rojo**: al recibir daño, todo ser se tiñe de rojo
+(`HURT_TINT`) mientras dura su invulnerabilidad. El tinte es la lectura de la señal
+`invulnerability_changed` en la vista, y por eso solo existe si el daño entra por
+esta vía única. Estuvo rota para los NPC: `MeleeCombat.strike` golpeaba el `Npc`
+directo, sin pasar por `NpcCombat`, y el enemigo bajaba de vida sin tinte. Hay un
+caso en `npc_combat_runner` que mide la cadena entera (golpe -> hitbox ->
+`NpcCombat` -> señal -> `modulate`).
+
 ## 6. Sistema de coordenadas (sección 16)
 
 Decisiones fijas. No cambiar a mitad de proyecto.

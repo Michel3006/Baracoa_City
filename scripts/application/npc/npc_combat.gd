@@ -11,6 +11,12 @@ extends RefCounted
 ## Lo que decide, y es exactamente lo mismo que decide `MeleeCombat`: si un golpe
 ## sale, cuándo puede volver a salir, cuánto hace y con qué invulnerabilidad.
 ##
+## También como `MeleeCombat`, es el cuerpo de combate que la vista expone a la
+## hitbox del otro lado: el golpe del jugador entra por `take_damage`, que es lo
+## único que concede invulnerabilidad y aturdimiento. Esa es la ley del juego:
+## todo ser que recibe daño se tiñe de rojo mientras dura su invulnerabilidad, y
+## eso solo pasa si el daño entra por aquí y no por el `Npc` pelado.
+##
 ## El tiempo lo mueve quien lo llama con `advance(delta)`, igual que en el resto de
 ## casos de uso, para que sea determinista y probable sin escena.
 ##
@@ -57,6 +63,19 @@ var is_invulnerable: bool:
 var is_stunned: bool:
 	get:
 		return _stun_remaining > 0.0
+
+
+var is_dead: bool:
+	get:
+		return npc == null or npc.is_dead
+
+
+## Estadísticas de quien pelea. `DamageRules` las busca para leer la defensa, de
+## modo que el cuerpo de combate del NPC sirve como objetivo válido igual que el
+## del jugador.
+var stats: CharacterStats:
+	get:
+		return null if npc == null else npc.stats
 
 
 ## Para la UI de depuración: cuánto le falta al próximo golpe.
@@ -130,6 +149,30 @@ func receive_damage(raw_damage: float, source: Object = null) -> float:
 	grant_invulnerability()
 	apply_stun()
 	damaged.emit(dealt, source)
+	return dealt
+
+
+## La misma entrada de daño, con el nombre que espera `DamageRules`.
+##
+## Existe para que el cuerpo de combate del NPC sea un objetivo válido tal cual:
+## el jugador no debería conocer `Npc` ni saltarse la invulnerabilidad llamando a
+## `take_damage` directamente. La cantidad ya viene calculada por el atacante
+## (`DamageRules.compute` contra la defensa de este cuerpo, en
+## `MeleeCombat.strike`), así que aquí no se vuelve a aplicar la defensa: lo que
+## hace este método es respetar la ventana de invulnerabilidad, aturdir y avisar.
+## Sin esta entrada el golpe del jugador quitaba vida sin tinte rojo: el NPC nunca
+## se enteraba de que le habían pegado.
+func take_damage(amount: float) -> float:
+	if npc == null or npc.is_dead or is_invulnerable:
+		return 0.0
+	if amount <= 0.0:
+		return 0.0
+	var dealt := npc.take_damage(amount)
+	if dealt <= 0.0:
+		return 0.0
+	grant_invulnerability()
+	apply_stun()
+	damaged.emit(dealt, null)
 	return dealt
 
 

@@ -20,7 +20,7 @@ es pulido y la Fase 2.**
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 135/135 pruebas correctas
+# RESULTADO: 139/139 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
@@ -29,7 +29,7 @@ godot --headless --script res://tests/integration/combat_runner.gd
 # RESULTADO: 11/11 pruebas correctas
 
 godot --headless --script res://tests/integration/npc_combat_runner.gd
-# RESULTADO: 20/20 pruebas correctas
+# RESULTADO: 21/21 pruebas correctas
 
 godot --headless --script res://tests/integration/startup_runner.gd
 # RESULTADO: 17/17 pruebas correctas
@@ -362,7 +362,7 @@ depender de `GameConfig.NPC_ENABLED` ataría la suite a una bandera.
 ## Comandos
 
 ```bash
-# tests unitarios (135)
+# tests unitarios (139)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)
@@ -371,7 +371,7 @@ godot --headless --script res://tests/integration/world_physics_runner.gd
 # tests de integracion de combate (11)
 godot --headless --script res://tests/integration/combat_runner.gd
 
-# tests de integracion de NPC (20)
+# tests de integracion de NPC (21)
 godot --headless --script res://tests/integration/npc_combat_runner.gd
 
 # tests de integracion de arranque (17)
@@ -479,6 +479,22 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 - **Los tests de integración desactivan el presentador**
   (`presenter.set_physics_process(false)`) porque el presentador lee el teclado y
   pisaría al controlador que el test maneja.
+- **La entrada de daño es única: el cuerpo de combate** (`NpcCombat` para el
+  enemigo, `MeleeCombat` para el jugador). Las vistas exponen ese cuerpo en
+  `combat_target`, y el daño se pide con `take_damage(amount)` sobre él — nunca
+  sobre el `Player` o el `Npc` pelados. De ahí la **ley del tinte rojo**: todo ser
+  que recibe daño se tiñe (`HURT_TINT`) durante su invulnerabilidad, y el tinte es
+  la lectura de `invulnerability_changed` en la vista. Estuvo rota para los NPC:
+  `MeleeCombat.strike` llamaba a `take_damage` sobre el `Npc` directo, sin pasar
+  por `NpcCombat`, y el enemigo bajaba de vida sin tinte ni aturdimiento. Ojo con
+  `take_damage`: la cantidad ya viene calculada por el atacante (defensa incluida),
+  así que **no** se vuelve a aplicar la fórmula; `receive_damage` es la entrada de
+  daño bruto, y la usa quien ataca con un número sin calcular.
+- **Golpear a un enemigo lo deja aturdido e invulnerable en su `NpcCombat`**, y ese
+  reloj solo avanza con `advance(delta)` de su presentador. Los tests de
+  integración que apagan los presentadores y luego atacan con el combate del
+  enemigo tienen que limpiar el reloj primero (`combat.advance(...)`): si no, el
+  `try_attack` del propio enemigo se rechaza por stun.
 
 ## Documentación relacionada
 

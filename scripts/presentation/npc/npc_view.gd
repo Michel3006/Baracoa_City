@@ -137,7 +137,9 @@ func end_attack() -> void:
 	_refresh_animation()
 
 
-## Aturdimiento: se tiñe para que se note el golpe.
+## Tinte de daño recibido: mientras dura la invulnerabilidad el cuerpo entero se
+## tiñe (la misma ley que el jugador). Lo enciende el presentador al recibir
+## `invulnerability_changed`, y la muerte tiene su propio tinte más apagado.
 func set_hurt(active: bool) -> void:
 	if _is_hurt == active:
 		return

@@ -284,7 +284,9 @@ Cómo se comportan:
   correa), para que la zona siga teniendo enemigos y no se vacíe.
 - Por debajo del 25 % de vida **huyen** en vez de seguir peleando.
 - Al recibir daño se stun 0,2 s y ganan 0,35 s de invulnerabilidad, para que dos
-  enemigos no peguen en el mismo frame.
+  enemigos no peguen en el mismo frame. (Antes del tinte rojo universal, el golpe
+  del jugador se saltaba el `NpcCombat` y el enemigo ni siquiera se aturdía: esto
+  es lo que hace que de verdad "reciba daño" como cualquier ser.)
 - Pasean por su zona cuando están en reposo, más despacio de lo que persiguen:
   correr sin motivo delata que es un enemigo.
 
@@ -299,8 +301,15 @@ Dos cosas que no están y conviene saber:
   frente, así que de lado el fotograma no encaja del todo.
 - Cuando un enemigo golpea **sale un zarpazo** en pantalla: el mismo efecto que el
   arco del jugador, con la hoja de zarpas del pack (`assets/fx/claw.png`), mismo
-  recorte y mismo origen. Al recibir daño, el jugador se tiñe de rojo
-  (`HURT_TINT`) mientras dura la invulnerabilidad.
+  recorte y mismo origen.
+
+Ley del tinte rojo: **al recibir daño, todo ser (jugador y enemigos) se tiñe de
+rojo (`HURT_TINT`) mientras dura su invulnerabilidad**. Es la lectura común de
+"acabo de recibir un golpe" y coincide con la ventana en que no se puede volver a
+golpear. Antes el jugador se teñía y el enemigo no: el golpe del jugador llamaba a
+`take_damage` sobre el `Npc` del dominio y se saltaba el `NpcCombat` entero
+(invulnerabilidad, aturdimiento y señal). Ahora la vista de cada ser expone su
+cuerpo de combate (`combat_target`), y el daño siempre entra por ahí.
 
 ## 8quater. El HUD
 
