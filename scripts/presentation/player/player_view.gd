@@ -184,11 +184,12 @@ func begin_attack(weapon: Weapon = null) -> void:
 		hitbox.set_active(true)
 	if _is_unarmed:
 		if _punch != null:
-			_punch.begin(_facing)
-		# A puños no reproducimos el clip de ataque del cuerpo (ese clip es de perfil)
-		if _actor != null and _actor.current_clip() == ActorSprite.ATTACK:
-			_actor.play(ActorSprite.IDLE, true)
+			_punch.end()
+		if _actor != null:
+			_actor.play(ActorSprite.ATTACK, true)
 	else:
+		if _punch != null:
+			_punch.end()
 		if _actor != null:
 			_actor.play(ActorSprite.ATTACK, true)
 	_refresh_animation()
@@ -338,7 +339,8 @@ func _physics_process(delta: float) -> void:
 	# a la posición y a la inclinación nuevas: por eso al parar el personaje parecía
 	# volverse de lado.
 	_place_weapon()
-	_refresh_punch()
+	if _punch != null and _punch.is_active():
+		_punch.end()
 
 
 ## Elige la animación que toca: la muerte no cede, y el golpe manda sobre el
@@ -350,17 +352,6 @@ func _refresh_animation() -> void:
 		_actor.play(ActorSprite.DEAD)
 		return
 	if _swing >= 0.0:
-		# A puños el cuerpo queda en IDLE direccional (el brazo se dibuja por código)
-		if _is_unarmed:
-			if _is_walking:
-				_actor.play(ActorSprite.WALK)
-			else:
-				_actor.play(ActorSprite.IDLE)
-			return
-		# El clip del golpe lo arranca `begin_attack()` y aquí no se vuelve a pedir. El
-		# clip no se repite, así que al terminar `_playing` queda en falso y `play()`
-		# lo empezaría de cero: el golpe daba un tirón al final cada vez que el jugador
-		# giraba o pasaba un fotograma quieto.
 		if _actor.current_clip() != ActorSprite.ATTACK:
 			_actor.play(ActorSprite.ATTACK, true)
 		return

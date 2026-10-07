@@ -983,15 +983,16 @@ func _unarmed_punch_uses_punch_arm() -> void:
 	if _context.check(player.is_swinging(), "no hay swing a puños"):
 		var clip := actor.current_clip()
 		_context.check(
-			clip == ActorSprite.IDLE or clip == ActorSprite.WALK,
-			"a puños el cuerpo queda en IDLE/WALK y está en %s" % str(clip)
+			clip == ActorSprite.ATTACK,
+			"a puños el cuerpo debe usar el clip ATTACK y está en %s" % str(clip)
 		)
 		var is_active := false
-		if punch.has_method("is_active"):
-			is_active = punch.call("is_active")
-		elif punch.get("active") != null:
-			is_active = punch.active
-		_context.check(is_active, "el brazo a puños debe estar activo durante el swing")
+		if punch != null:
+			if punch.has_method("is_active"):
+				is_active = punch.call("is_active")
+			elif punch.get("active") != null:
+				is_active = punch.active
+		_context.check(not is_active, "el brazo dibujado por código no debe estar activo cuando se usa la animación del cuerpo")
 
 	await _settle(int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 6)
 
