@@ -13,7 +13,10 @@ extends RefCounted
 ## Hojas del pack con su rejilla esperada, para detectar de un vistazo si un archivo
 ## se sustituye por otro de tamaño distinto.
 const SHEETS := {
-	"jugador": ["res://assets/characters/ninja_blue.png", 4, 7],
+	# El jugador activo es la persona (4x8: cuatro filas de caminar, salto/caída/
+	# muerte y golpe); el ninja se conserva como fallback y se sigue comprobando.
+	"jugador": ["res://assets/characters/human_player.png", 4, 8],
+	"ninja": ["res://assets/characters/ninja_blue.png", 4, 7],
 	"limo": ["res://assets/characters/slime.png", 4, 4],
 	"buho": ["res://assets/characters/owl.png", 4, 4],
 	"arana": ["res://assets/characters/spider_red.png", 4, 4],
@@ -80,6 +83,8 @@ func register() -> Array:
 	return [
 		["las hojas del pack tienen la rejilla esperada", _sheet_grids],
 		["el catálogo da hoja a cada actor", _catalog_sheets],
+		["el jugador activo es la persona y el ninja queda de fallback", _player_visuals],
+		["la muerte del humano es una pose fija de la hoja", _human_dead_is_fixed],
 		["caminar usa la fila de la orientación", _walk_rows],
 		["el golpe no cambia de fila al mirar de lado", _attack_row_is_fixed],
 		["el golpe se refleja solo mirando a la izquierda", _attack_flip],
@@ -96,8 +101,9 @@ func register() -> Array:
 	]
 
 
-## Si alguien sustituye `ninja_blue.png` por otra imagen de otro tamaño, esta prueba
-## lo dice con el nombre de la hoja en vez de dejar un actor recortado en pedazos.
+## Si alguien sustituye la hoja del jugador (la persona) o la del ninja por otra
+## imagen de otro tamaño, esta prueba lo dice con el nombre de la hoja en vez de
+## dejar un actor recortado en pedazos.
 func _sheet_grids(ctx: ScriptTestContext) -> void:
 	for label: String in SHEETS:
 		var expected: Array = SHEETS[label]
@@ -132,6 +138,72 @@ func _catalog_sheets(ctx: ScriptTestContext) -> void:
 	ctx.check(ActorVisualCatalog.sheet_of(&"dragon").is_empty(), "hoja de un actor desconocido")
 	ctx.check(
 		not ActorVisualCatalog.apply_to(&"dragon", null), "no se prepara un actor inexistente"
+	)
+
+
+## El jugador activo es la persona (la hoja de bit-era), y el ninja clásico se
+## conserva entero como fallback: las dos definiciones existen y las dos hojas
+## cargan. Si alguien quitara el ninja, esta prueba lo dice.
+func _player_visuals(ctx: ScriptTestContext) -> void:
+	var active: StringName = ActorVisualCatalog.active_player()
+	ctx.check_equal(active, GameConfig.PLAYER_VISUAL, "el alias PLAYER resuelve al visual activo")
+	ctx.check(
+		active in [ActorVisualCatalog.PLAYER_HUMAN, ActorVisualCatalog.PLAYER_NINJA],
+		"el visual activo es una definición conocida"
+	)
+	var human := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_HUMAN)
+	var ninja := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_NINJA)
+	ctx.check(human != null and not human.sheet.is_empty(), "la persona tiene definición")
+	ctx.check(ninja != null and not ninja.sheet.is_empty(), "el ninja tiene definición")
+	ctx.check_equal(human.sheet, "res://assets/characters/human_player.png", "hoja de la persona")
+	ctx.check_equal(ninja.sheet, "res://assets/characters/ninja_blue.png", "hoja del ninja")
+	for id: StringName in [
+		ActorVisualCatalog.PLAYER_HUMAN, ActorVisualCatalog.PLAYER_NINJA
+	]:
+		var sprite := _prepared(id)
+		ctx.check(
+			sprite.texture != null, "el sprite de %s carga" % id
+		)
+		# La fila del golpe sale de la definición, no de una convención del pack:
+		# la persona ataca en la fila 5, el ninja en la 4.
+		ctx.check_equal(
+			ActorVisualCatalog.attack_row_of(id),
+			ActorVisualCatalog.definition_of(id).attack_row,
+			"la fila del golpe de %s es la de su definición" % id
+		)
+
+
+## La persona no tiene fila de muerte direccional: muere en una pose fija de la
+## hoja (yacente, fila 4 columna 2), igual en las cuatro orientaciones. El ninja
+## seguía el otro camino (la pose quieta de la fila en la que mira), y esa
+## diferencia es la que define la columna base del clip DEAD.
+func _human_dead_is_fixed(ctx: ScriptTestContext) -> void:
+	var sprite := _prepared(ActorVisualCatalog.PLAYER_HUMAN)
+	var human := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_HUMAN)
+	ctx.check_equal(
+		human.dead_directional, false, "la muerte de la persona no cambia con la orientación"
+	)
+	sprite.play(ActorSprite.DEAD, true)
+	var expected := human.dead_row * sprite.hframes + human.dead_column
+	for facing: Vector2 in [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]:
+		sprite.set_facing(facing)
+		ctx.check_equal(
+			sprite.frame, expected,
+			"muere en la misma pose mirando a %s (frame %d)" % [facing, expected]
+		)
+	ctx.check(
+		expected < sprite.hframes * sprite.vframes,
+		"la pose de la muerte cae dentro de la rejilla (%dx%d)" % [
+			sprite.hframes, sprite.vframes
+		]
+	)
+	# El fallback (ninja) no se lee vacío: su muerte es la fila de la orientación.
+	var ninja := _prepared(ActorVisualCatalog.PLAYER_NINJA)
+	ninja.play(ActorSprite.DEAD, true)
+	ninja.set_facing(Vector2.UP)
+	ctx.check_equal(
+		_row(ninja), GameConfig.ACTOR_ROW_UP,
+		"el ninja sigue muriendo en la fila en la que mira"
 	)
 
 
@@ -175,8 +247,8 @@ func _attack_row_is_fixed(ctx: ScriptTestContext) -> void:
 		ctx.check_equal(_row(sprite), row, "el golpe no cambia de fila mirando a %s" % facing)
 	ctx.check_equal(
 		row,
-		GameConfig.ACTOR_ROW_DOWN + 4,
-		"y es la fila del golpe de la hoja del jugador"
+		ActorVisualCatalog.attack_row_of(ActorVisualCatalog.PLAYER),
+		"y es la fila del golpe de la definición visual del jugador"
 	)
 
 
@@ -234,32 +306,32 @@ func _walk_advances(ctx: ScriptTestContext) -> void:
 	)
 
 
-## El golpe no se repite. Si se repitiera, un ataque de cuatro fotogramas se
+## El golpe no se repite. Si se repitiera, un ataque de N fotogramas se
 ## quedaría parpadeando mientras dure la ventana, y no se vería entero.
 func _attack_stops_at_end(ctx: ScriptTestContext) -> void:
 	var sprite := _sprite()
+	var clip: Dictionary = sprite.clips[ActorSprite.ATTACK]
+	var attack_row := int(clip.get("row", 0))
+	var attack_frames := int(clip.get("frames", 1))
+	var attack_fps := float(clip.get("fps", 1.0))
 	sprite.play(ActorSprite.ATTACK, true)
-	var last := (
-		(GameConfig.ACTOR_ROW_DOWN + 4) * sprite.hframes
-		+ GameConfig.ACTOR_ATTACK_FRAMES
-		- 1
-	)
+	var last := attack_row * sprite.hframes + attack_frames - 1
 	# Se avanza el doble de lo que dura el golpe: tiene que quedarse quieto en el
 	# último fotograma en vez de volver al principio.
-	for _frame: int in range(
-		int(GameConfig.ACTOR_ATTACK_FRAMES / GameConfig.ACTOR_ATTACK_FPS / STEP) * 2
-	):
+	for _frame: int in range(int(attack_frames / attack_fps / STEP) * 2):
 		sprite._process(STEP)
 	ctx.check_equal(sprite.frame, last, "el golpe se queda en su último fotograma")
 	ctx.check(not sprite.is_playing(ActorSprite.ATTACK), "y deja de reproducirse")
 	# Y no vuelve solo a la caminata: eso lo decide quien lo llama.
 	ctx.check_equal(sprite.current_clip(), ActorSprite.ATTACK, "sigue siendo el golpe")
 	# Un fotograma de golpe no puede durar más que el clip entero: si no, se vería
-	# siempre el primero.
+	# siempre el primero. Se mira el clip real, no la constante global, porque cada
+	# personaje puede traer su número de fotogramas.
 	ctx.check(
-		GameConfig.ACTOR_ATTACK_FRAMES / GameConfig.ACTOR_ATTACK_FPS
-		<= GameConfig.ATTACK_RECOVERY,
-		"el golpe termina antes de que termine la recuperacion"
+		attack_frames / attack_fps <= GameConfig.ATTACK_RECOVERY,
+		"el golpe (%.3f s) termina antes de que termine la recuperacion (%.3f s)" % [
+			attack_frames / attack_fps, GameConfig.ATTACK_RECOVERY
+		]
 	)
 
 

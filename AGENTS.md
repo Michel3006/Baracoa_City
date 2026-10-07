@@ -21,7 +21,7 @@ de cosas de fuera (texturas y play-test) y la Fase 2.**
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 148/148 pruebas correctas
+# RESULTADO: 150/150 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
@@ -376,7 +376,7 @@ Tres casos de este cierre conviene recordarlos como patrón:
 ## Comandos
 
 ```bash
-# tests unitarios (148)
+# tests unitarios (150)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)
@@ -549,6 +549,7 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 
 | archivo | contenido |
 | --- | --- |
+| `docs/CHARACTER_VISUAL_SYSTEM.md` | sistema de definiciones visuales: humano por defecto, ninja como fallback, filas/fotogramas de cada animación |
 | `docs/architecture/ARCHITECTURE.md` | capas, flujo, coordenadas, colisiones, testing |
 | `docs/gameplay/GAMEPLAY.md` | controles, movimiento, vida, estados, qué falta del MVP |
 | `docs/networking/NETWORKING.md` | diseño server-authoritative de la Fase 2 |

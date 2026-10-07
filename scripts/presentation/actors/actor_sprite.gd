@@ -81,19 +81,74 @@ func configure(
 		GameLogger.warning("No se pudo cargar la hoja %s" % path, "ActorSprite")
 		return
 	texture = sheet
-	_apply_grid(sheet)
+	_apply_grid(sheet, GameConfig.ACTOR_FRAME_SIZE)
 	define_defaults(walk_row, attack_row)
 
 
-## Recorta la hoja en una rejilla de cuadros de `GameConfig.ACTOR_FRAME_SIZE`.
-func _apply_grid(sheet: Texture2D) -> void:
-	var frame := float(maxi(1, GameConfig.ACTOR_FRAME_SIZE))
+## Carga la hoja y los clips de una definición visual (sección 8 de la
+## especificación de personas).
+##
+## La definición decide filas, fotogramas y velocidad por personaje: el humano
+## ataca en la fila 5 con tres fotogramas y muere en una pose fija de la fila 4,
+## el ninja ataca en la 4 con cuatro y cae en la fila de la orientación. Los
+## enemigos del pack no tienen nada de esto; es la hoja la que obliga.
+func apply_definition(def: CharacterVisualDefinition) -> bool:
+	if def == null or def.sheet.is_empty():
+		GameLogger.warning("Definición visual vacía", "ActorSprite")
+		return false
+	sheet_path = def.sheet
+	var sheet: Texture2D = load(def.sheet) as Texture2D
+	if sheet == null:
+		GameLogger.warning("No se pudo cargar la hoja %s" % def.sheet, "ActorSprite")
+		return false
+	texture = sheet
+	_apply_grid(sheet, def.frame_size)
+	clips = {
+		WALK: {
+			"row": def.walk_row,
+			"frames": def.walk_frames,
+			"fps": def.walk_fps,
+			"loop": true,
+			"directional": true,
+		},
+		IDLE: {
+			"row": def.walk_row,
+			"frames": 1,
+			"fps": 1.0,
+			"loop": true,
+			"directional": true,
+		},
+		ATTACK: {
+			"row": def.attack_row,
+			"frames": def.attack_frames,
+			"fps": def.attack_fps,
+			"loop": false,
+			"directional": false,
+		},
+		DEAD: {
+			"row": def.dead_row,
+			"column": def.dead_column,
+			"frames": 1,
+			"fps": 1.0,
+			"loop": true,
+			"directional": def.dead_directional,
+		},
+	}
+	_refresh()
+	return true
+
+
+## Recorta la hoja en una rejilla de cuadros del tamaño que diga la hoja.
+## Los personajes del pack usan `GameConfig.ACTOR_FRAME_SIZE`; una hoja futura
+## (personas reales) puede traer otra rejilla y la trae en su definición.
+func _apply_grid(sheet: Texture2D, frame_size: int = GameConfig.ACTOR_FRAME_SIZE) -> void:
+	var frame := float(maxi(1, frame_size))
 	var size := sheet.get_size()
 	hframes = maxi(1, int(round(size.x / frame)))
 	vframes = maxi(1, int(round(size.y / frame)))
 
 
-## Clips que espera una hoja deactor con caminar en cuatro direcciones.
+## Clips que espera una hoja de actor con caminar en cuatro direcciones.
 ##
 ## El golpe son cuatro fotogramas en su propia fila. La hoja del jugador tiene
 ## exactamente esa disposicion: cuatro filas de caminar, despues el golpe.
@@ -209,9 +264,9 @@ func _refresh() -> void:
 	if bool(clip.get("directional", false)):
 		row += _row_offset()
 	var frames := maxi(1, int(clip.get("frames", 1)))
-	var column := 0
+	var column := int(clip.get("column", 0))
 	if frames > 1:
-		column = clampi(int(_elapsed), 0, frames - 1)
+		column += clampi(int(_elapsed), 0, frames - 1)
 	column = mini(column, maxi(0, hframes - 1))
 	frame = clampi(row * maxi(1, hframes) + column, 0, maxi(0, hframes * vframes - 1))
 	_apply_flip(clip)

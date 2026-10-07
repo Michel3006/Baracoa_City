@@ -1,38 +1,61 @@
 class_name ActorVisualCatalog
 extends RefCounted
 
-## Qué hoja y cómo se recorta cada actor (sección 25).
+## Qué hoja y cómo se recorta cada actor (sección 25; el jugador humano viene de
+## la especificación de personas, secciones 14 a 21).
 ##
 ## Un solo sitio donde se decide de qué archivo sale el sprite de cada personaje y
 ## qué filas son qué animación. Añadir un enemigo nuevo es una línea aquí y una en
 ## `NpcKind`; ni la vista ni el caso de uso saben nombres de archivo.
+##
+## El jugador tiene dos definiciones visuales: el humano (`PLAYER_HUMAN`, el que
+## se ve al jugar) y el ninja (`PLAYER_NINJA`, el clásico, que se conserva como
+## fallback). Cuál de las dos usa el juego lo decide `GameConfig.PLAYER_VISUAL`;
+## el id `PLAYER` es un alias que resuelve al visual activo, para que las vistas
+## no tengan que saber cuál es.
 ##
 ## Solo datos, sin nodos ni estado. Vive en Presentation porque una ruta de textura
 ## es cosa de esa capa: el dominio no sabe que existen hojas de sprites.
 ##
 ## Dependencias: presentation -> domain, infrastructure/configuration
 
-## Jugador. Su hoja es de 4x7: cuatro filas de caminar en las cuatro
-## orientaciones, y después el golpe (fila 4), el salto (5) y el de objeto (6).
+## Jugador: alias al visual activo que fija `GameConfig.PLAYER_VISUAL`.
 const PLAYER := &"player"
-const PLAYER_SHEET := "res://assets/characters/ninja_blue.png"
-const PLAYER_WALK_ROW := GameConfig.ACTOR_ROW_DOWN
-const PLAYER_ATTACK_ROW := PLAYER_WALK_ROW + 4
+## Persona (hoja de bit-era, CC0): por defecto desde la especificación de personas.
+const PLAYER_HUMAN := &"player_human"
+## Ninja del pack clásico: se conserva como fallback y para comparar.
+const PLAYER_NINJA := &"player_ninja"
+
+
+## Resuelve el alias del jugador al visual activo que fija la configuración.
+static func active_player() -> StringName:
+	var visual: StringName = GameConfig.PLAYER_VISUAL
+	if visual in [PLAYER_HUMAN, PLAYER_NINJA]:
+		return visual
+	GameLogger.warning(
+		"Visual de jugador desconocido: %s; se usa el humano" % visual,
+		"ActorVisualCatalog"
+	)
+	return PLAYER_HUMAN
 
 
 static func ids() -> Array[StringName]:
-	return [PLAYER, NpcKind.SLIME, NpcKind.OWL, NpcKind.SPIDER, NpcKind.LIZARD]
+	return [
+		PLAYER, PLAYER_NINJA,
+		NpcKind.SLIME, NpcKind.OWL, NpcKind.SPIDER, NpcKind.LIZARD,
+	]
 
 
 static func exists(id: StringName) -> bool:
-	return id in ids()
+	return id in ids() or id in [PLAYER_HUMAN, PLAYER_NINJA]
 
 
 ## Ruta de la hoja de un actor, o cadena vacía si no se conoce.
 static func sheet_of(id: StringName) -> String:
+	var def := definition_of(id)
+	if def != null:
+		return def.sheet
 	match id:
-		PLAYER:
-			return PLAYER_SHEET
 		NpcKind.SLIME:
 			return "res://assets/characters/slime.png"
 		NpcKind.OWL:
@@ -56,10 +79,60 @@ static func walk_row_of(id: StringName) -> int:
 ## Los enemigos del pack solo traen las cuatro filas de caminar: no tienen fila de
 ## ataque. Para ellos el golpe reutiliza la pose de frente, que es justo la que
 ## necesita un ataque de frente. Es lo que hace el pack, no un apaño nuestro.
+##
+## El jugador usa la fila que diga su definición visual: la 5 para el humano, la 4
+## para el ninja. No es `walk_row + 4` por convención: es la fila de cada hoja.
 static func attack_row_of(id: StringName) -> int:
-	if id == PLAYER:
-		return PLAYER_ATTACK_ROW
+	var def := definition_of(id)
+	if def != null:
+		return def.attack_row
 	return GameConfig.ACTOR_ROW_DOWN
+
+
+## Definición visual de un actor del catálogo, o `null` si no tiene.
+##
+## Los enemigos no tienen definición: usan la ruta clásica de `configure()`. Las
+## personas (jugador hoy, ciudadanos en fases futuras) sí, y la definición es lo
+## único que el reproductor necesita saber de su hoja.
+static func definition_of(id: StringName) -> CharacterVisualDefinition:
+	match id:
+		PLAYER:
+			return definition_of(active_player())
+		PLAYER_HUMAN:
+			return _human_definition()
+		PLAYER_NINJA:
+			return _ninja_definition()
+	return null
+
+
+## La persona: hoja de bit-era (CC0), 64x128 = 4x8 de 16 px.
+##
+## Filas 0-3 caminar en las cuatro orientaciones (igual que el ninja), fila 4
+## salto/caída/muerte con la muerte en la columna 2 (yacente, fija), fila 5 golpe
+## con tres fotogramas (la columna 3 queda vacía).
+static func _human_definition() -> CharacterVisualDefinition:
+	var def := CharacterVisualDefinition.new()
+	def.id = PLAYER_HUMAN
+	def.sheet = "res://assets/characters/human_player.png"
+	def.attack_row = GameConfig.ACTOR_ROW_DOWN + 5
+	def.attack_frames = 3
+	def.dead_row = 4
+	def.dead_column = 2
+	def.dead_directional = false
+	return def
+
+
+## El ninja clásico, exactamente como estaba antes de las personas: 64x112 = 4x7
+## de 16 px, golpe en la fila 4 y muerte en la fila de la orientación.
+static func _ninja_definition() -> CharacterVisualDefinition:
+	var def := CharacterVisualDefinition.new()
+	def.id = PLAYER_NINJA
+	def.sheet = "res://assets/characters/ninja_blue.png"
+	def.attack_row = GameConfig.ACTOR_ROW_DOWN + 4
+	def.dead_row = GameConfig.ACTOR_ROW_DOWN
+	def.dead_column = 0
+	def.dead_directional = true
+	return def
 
 
 ## Prepara un `ActorSprite` para un actor del catálogo.
@@ -69,6 +142,9 @@ static func attack_row_of(id: StringName) -> int:
 static func apply_to(id: StringName, sprite: ActorSprite) -> bool:
 	if sprite == null:
 		return false
+	var def := definition_of(id)
+	if def != null:
+		return sprite.apply_definition(def)
 	var path := sheet_of(id)
 	if path.is_empty() or not ResourceLoader.exists(path):
 		GameLogger.warning("Falta la hoja de %s (%s)" % [id, path], "ActorVisualCatalog")

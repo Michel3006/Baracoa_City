@@ -95,6 +95,10 @@ const WORLD_ZONE_SIZE := Vector2i(64, 64)
 const PLAYER_SPAWN := Vector2(200, 200)
 
 # --- Presentacion de actores (seccion 25: los placeholders dan paso a sprites) ---
+## Qué visual usa el jugador (especificación de personas, sección 18): el humano
+## por defecto, el ninja como fallback. Son los ids de `ActorVisualCatalog`; el
+## catálogo resuelve el alias `PLAYER` con este valor.
+const PLAYER_VISUAL: StringName = &"player_human"
 ## Lado de un frame de personaje. El pack de sprites usa 16x16, el mismo tamano
 ## que el tile del mapa, asi que un personaje ocupa exactamente un tile de ancho.
 const ACTOR_FRAME_SIZE := 16

@@ -200,8 +200,10 @@ el dominio y el decor solo mostrará el estado resultante.
 
 ## 8. Pendiente para completar el MVP
 
-- [x] **Animaciones**: el jugador se dibuja con la hoja de sprites del pack, en
-      cuatro orientaciones, con ciclo de paso, pose de golpe y parpadeo al aturdirse.
+- [x] **Animaciones**: el jugador se dibuja con la hoja de la persona humana (bit-era,
+      CC0), en cuatro orientaciones, con ciclo de paso, pose de golpe y parpadeo al aturdirse.
+      El ninja queda como fallback en `GameConfig.PLAYER_VISUAL`. Ver
+      `docs/CHARACTER_VISUAL_SYSTEM.md`.
 - [x] **Combate**: golpe con distancia, cooldown, daño `max(1, ataque - defensa)`,
       detección de objetivo por hitbox e invulnerabilidad temporal.
 - [x] **Armas**: piedra y cuchillo, con durabilidad. La fórmula del daño vive en

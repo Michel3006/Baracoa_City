@@ -19,7 +19,8 @@ recorte:
 
 | archivo | qué es | rejilla |
 | --- | --- | --- |
-| `assets/characters/ninja_blue.png` | jugador (64x112) | 16x16, 4 columnas x 7 filas: filas 0-3 caminar (abajo/lateral/arriba/lateral espejo), fila 4 golpe, filas 5-6 salto/objeto |
+| `assets/characters/human_player.png` | persona (bit-era, CC0): el jugador por defecto (64x128) | 16x16, 4 columnas x 8 filas: filas 0-3 caminar (abajo/lateral/arriba/lateral espejo), fila 4 salto/caída/muerte (muerte en columna 2, yacente), fila 5 golpe (3 fotogramas, la columna 3 queda vacía), filas 6-7 vacías |
+| `assets/characters/ninja_blue.png` | ninja clásico del pack: fallback del jugador (64x112) | 16x16, 4 columnas x 7 filas: filas 0-3 caminar, fila 4 golpe, filas 5-6 salto/objeto |
 | `assets/characters/slime.png` | enemigo slime (64x64) | 16x16, 4 filas de caminar, sin fila de ataque |
 | `assets/characters/owl.png` | enemigo búho (64x64) | ídem |
 | `assets/characters/spider_red.png` | enemigo araña (64x64) | ídem |

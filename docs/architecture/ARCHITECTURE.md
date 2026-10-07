@@ -311,13 +311,17 @@ contando píxeles de las hojas y de la imagen, no mirándolas.
 
 ## 9. Sprites: cómo se lee una hoja del pack
 
-Los gráficos vienen del **Ninja Adventure Asset Pack** de Pixel-boy (CC0). Solo se
-copiaron las hojas que el juego usa, no el pack entero: `assets/` pesa unos 1,4 MB
-de los 26 MB del paquete.
+La mayoría de los gráficos vienen del **Ninja Adventure Asset Pack** de Pixel-boy
+(CC0). El jugador humano viene del pack **Bit Era Game Character - Extended** de
+ImogiaGames (CC0), elegido tras inspeccionar las hojas candidatas píxel a píxel
+(ver `docs/CHARACTER_VISUAL_SYSTEM.md`). Solo se copiaron las hojas que el juego
+usa, no los packs enteros: `assets/` pesa unos 1,4 MB de los ~26 MB de los
+paquetes originales.
 
 | hoja | tamaño | rejilla |
 | --- | --- | --- |
-| `assets/characters/ninja_blue.png` | 64x112 | 4 x 7 de 16x16 |
+| `assets/characters/human_player.png` | 64x128 | 4 x 8 de 16x16 (jugador, por defecto) |
+| `assets/characters/ninja_blue.png` | 64x112 | 4 x 7 de 16x16 (jugador, fallback) |
 | `assets/characters/{slime,owl,spider_red,lizard}.png` | 64x64 | 4 x 4 de 16x16 |
 | `assets/fx/slash.png` | 128x32 | 4 de 32x32 (arco del jugador) |
 | `assets/fx/claw.png` | 128x32 | 4 de 32x32 (zarpazo de los enemigos) |
@@ -354,9 +358,12 @@ al mirar hacia abajo.
 Los enemigos del pack no traen fila de golpe propia, así que reutilizan la pose de
 frente, que es lo que dice `ActorVisualCatalog.attack_row_of`.
 
-Cambiar la hoja del jugador es cambiar `ActorVisualCatalog.PLAYER_SHEET`. Los tipos
-de enemigo (`NpcKind`) viven en el dominio; el catálogo visual los traduce a hoja. La
-regla de capas manda sobre lo que resulte más cómodo.
+Cambiar el visual del jugador es cambiar `GameConfig.PLAYER_VISUAL` (el humano
+`player_human` por defecto, el ninja `player_ninja` como fallback). El catálogo
+resuelve el alias `PLAYER` a la definición activa; cada definición trae su hoja,
+sus filas y sus fotogramas. Los tipos de enemigo (`NpcKind`) viven en el dominio;
+el catálogo visual los traduce a hoja. La regla de capas manda sobre lo que
+resulte más cómodo.
 
 ## 10. Extender el mapa
 
