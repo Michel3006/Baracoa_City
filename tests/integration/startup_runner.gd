@@ -466,11 +466,12 @@ func _facing_kept_on_stop() -> void:
 	var actor := player.get_node_or_null("Actor") as ActorSprite
 	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
 		return
+	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
 	var rows: Array[int] = [
-		GameConfig.ACTOR_ROW_SIDE_MIRRORED,
-		GameConfig.ACTOR_ROW_UP,
-		GameConfig.ACTOR_ROW_SIDE,
-		GameConfig.ACTOR_ROW_DOWN,
+		def.row_side_mirrored,
+		def.row_up,
+		def.row_side,
+		def.walk_row,
 	]
 	for index: int in range(DIRECTIONS.size()):
 		var direction: Vector2 = DIRECTIONS[index]
@@ -492,6 +493,15 @@ func _facing_kept_on_stop() -> void:
 		_context.check(
 			actor.facing() == direction,
 			"parado tras ir a %s el sprite mira a %s" % [direction, str(actor.facing())]
+		)
+		# La izquierda del humano se refleja (su hoja solo camina a la derecha); el
+		# resto de orientaciones y el ninja van sin espejo.
+		var expected_flip := def.mirror_side and direction == Vector2.LEFT
+		_context.check(
+			actor.flip_h == expected_flip,
+			"parado tras ir a %s el espejo es %s y toca %s" % [
+				direction, actor.flip_h, expected_flip
+			]
 		)
 
 
@@ -593,6 +603,8 @@ func _walk_after_attack_does_not_replay_the_swing() -> void:
 	var walk_rows: Dictionary = {}
 	var clips: Dictionary = {}
 	var previous_attack_frame: int = -1
+	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
+	var expected_rows := {def.walk_row: true, def.row_side: true, def.row_up: true, def.row_side_mirrored: true}
 	for direction: Vector2 in DIRECTIONS:
 		var action := _action_for(direction)
 		Input.action_press(action, 1.0)
@@ -618,10 +630,28 @@ func _walk_after_attack_does_not_replay_the_swing() -> void:
 			attack_frames, str(clips)
 		]
 	)
+	# La izquierda y la derecha del humano comparten la fila lateral (una se
+	# refleja), así que el número de filas distintas no tiene por qué ser cuatro:
+	# lo que se exige es que todas las filas que tocan se hayan visto y ninguna
+	# otra. El ninja tiene cuatro filas distintas y sigue cumpliendo.
+	var missing: Array[int] = []
+	for row: int in expected_rows:
+		if not walk_rows.has(row):
+			missing.append(row)
+	var extra: Array[int] = []
+	for row: int in walk_rows:
+		if not expected_rows.has(row):
+			extra.append(row)
 	_context.check(
-		walk_rows.size() == DIRECTIONS.size(),
-		"andando en circulo tras golpear solo se han visto %d filas de las %d que tocan: %s" % [
-			walk_rows.size(), DIRECTIONS.size(), str(walk_rows.keys())
+		missing.is_empty(),
+		"andando en circulo tras golpear no se ha visto la fila %s de las que tocan (%s)" % [
+			str(missing), str(walk_rows.keys())
+		]
+	)
+	_context.check(
+		extra.is_empty(),
+		"andando en circulo tras golpear se han visto filas que no tocan: %s (tocan %s)" % [
+			str(extra), str(expected_rows.keys())
 		]
 	)
 

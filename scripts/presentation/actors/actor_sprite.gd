@@ -13,8 +13,10 @@ extends Sprite2D
 ## (16x16). `Sprite2D` hace el recorte con `hframes` y `vframes`, así que aquí no
 ## hay ni un solo `AtlasTexture` que mantener.
 ##
-## Las hojas de caminar ocupan cuatro filas, una por orientación, en el orden que
-## fija `GameConfig.ACTOR_ROW_*`: abajo, un lateral, arriba y el otro lateral. Los
+## Las hojas de caminar ocupan cuatro filas, una por orientación. La mayoría (las
+## del pack) las tienen en el orden que fija `GameConfig.ACTOR_ROW_*`: abajo, un
+## lateral, arriba y el otro lateral. Una hoja ajena (el humano de bit-era) puede
+## ordenarlas distinto, y entonces la definición visual decide cada fila. Los
 ## fotogramas de una animación concreta son las **columnas**.
 ##
 ## ## Dos tipos de clip
@@ -54,6 +56,19 @@ var _clip: StringName = &""
 var _elapsed: float = 0.0
 var _facing: Vector2 = Vector2.DOWN
 var _playing: bool = false
+
+## Filas de las cuatro orientaciones para los clips direccionales, en coordenadas
+## absolutas de la hoja. Las hojas del pack las traen en 0/1/2/3; la definición
+## del humano de bit-era las tiene en 1 (frente), 2 (laterales) y 3 (espalda).
+var _row_down: int = GameConfig.ACTOR_ROW_DOWN
+var _row_side: int = GameConfig.ACTOR_ROW_SIDE
+var _row_up: int = GameConfig.ACTOR_ROW_UP
+var _row_side_mirrored: int = GameConfig.ACTOR_ROW_SIDE_MIRRORED
+## La hoja solo camina hacia la derecha y la izquierda sale de reflejarla.
+var _mirror_side: bool = false
+## Golpe alterno: un puñetazo con un brazo y el siguiente con el otro.
+var _alternate_attack: bool = false
+var _attack_parity: bool = false
 
 
 func _ready() -> void:
@@ -103,6 +118,13 @@ func apply_definition(def: CharacterVisualDefinition) -> bool:
 		return false
 	texture = sheet
 	_apply_grid(sheet, def.frame_size)
+	_row_down = def.walk_row
+	_row_side = def.row_side
+	_row_up = def.row_up
+	_row_side_mirrored = def.row_side_mirrored
+	_mirror_side = def.mirror_side
+	_alternate_attack = def.alternate_attack
+	_attack_parity = false
 	clips = {
 		WALK: {
 			"row": def.walk_row,
@@ -153,6 +175,13 @@ func _apply_grid(sheet: Texture2D, frame_size: int = GameConfig.ACTOR_FRAME_SIZE
 ## El golpe son cuatro fotogramas en su propia fila. La hoja del jugador tiene
 ## exactamente esa disposicion: cuatro filas de caminar, despues el golpe.
 func define_defaults(walk_row: int = GameConfig.ACTOR_ROW_DOWN, attack_row: int = -1) -> void:
+	_row_down = walk_row
+	_row_side = GameConfig.ACTOR_ROW_SIDE
+	_row_up = GameConfig.ACTOR_ROW_UP
+	_row_side_mirrored = GameConfig.ACTOR_ROW_SIDE_MIRRORED
+	_mirror_side = false
+	_alternate_attack = false
+	_attack_parity = false
 	var strike := attack_row if attack_row >= 0 else walk_row + 4
 	clips = {
 		WALK: {
@@ -198,6 +227,11 @@ func play(name: StringName, restart: bool = false) -> bool:
 		return false
 	if _clip == name and _playing and not restart:
 		return false
+	if name == ATTACK and _alternate_attack:
+		# Un golpe nuevo alterna el brazo: el puñetazo se refleja en golpes
+		# alternos para que salga con un brazo y el siguiente con el otro. Es lo
+		# único que cambia entre golpe y golpe: ni daño, ni alcance, ni reloj.
+		_attack_parity = not _attack_parity
 	_clip = name
 	_elapsed = 0.0
 	_playing = true
@@ -262,7 +296,7 @@ func _refresh() -> void:
 	var clip := clips[_clip] as Dictionary
 	var row := int(clip.get("row", 0))
 	if bool(clip.get("directional", false)):
-		row += _row_offset()
+		row = _direction_row()
 	var frames := maxi(1, int(clip.get("frames", 1)))
 	var column := int(clip.get("column", 0))
 	if frames > 1:
@@ -272,23 +306,28 @@ func _refresh() -> void:
 	_apply_flip(clip)
 
 
-## Un clip direccional ya trae las cuatro orientaciones en sus propias filas, asi
-## que no hay nada que reflejar. Uno de fila fija (el golpe) solo existe mirando al
-## frente, y para que no salga de frente cuando el actor va de lado se refleja.
+## Un clip direccional ya trae las cuatro orientaciones en sus propias filas, así
+## que solo se refleja cuando la hoja no trae el lateral de la izquierda dibujado
+## (el humano de bit-era camina solo hacia la derecha y la izquierda es el espejo).
+## Uno de fila fija (el golpe) solo existe mirando al frente, y para que no salga
+## de frente cuando el actor va de lado se refleja; si el actor alterna brazos,
+## cada golpe nuevo se refleja también, para que el puñetazo salga con un brazo y
+## el siguiente con el otro.
 func _apply_flip(clip: Dictionary) -> void:
 	if bool(clip.get("directional", false)):
-		flip_h = false
+		flip_h = _mirror_side and _facing == Vector2.LEFT
 		return
 	flip_h = _facing == Vector2.LEFT
+	if _alternate_attack and _clip == ATTACK:
+		flip_h = flip_h != _attack_parity
 
 
-## Cuantas filas suma la orientacion actual al clip direccional. Se expresa como
-## distancia respecto a la fila de abajo, que es la que se pasa al definir el clip.
-func _row_offset() -> int:
+## Fila absoluta de la hoja en la que se dibuja la orientación actual.
+func _direction_row() -> int:
 	if _facing.y < 0.0:
-		return GameConfig.ACTOR_ROW_UP - GameConfig.ACTOR_ROW_DOWN
+		return _row_up
 	if _facing.y > 0.0:
-		return 0
+		return _row_down
 	if _facing.x < 0.0:
-		return GameConfig.ACTOR_ROW_SIDE - GameConfig.ACTOR_ROW_DOWN
-	return GameConfig.ACTOR_ROW_SIDE_MIRRORED - GameConfig.ACTOR_ROW_DOWN
+		return _row_side
+	return _row_side_mirrored

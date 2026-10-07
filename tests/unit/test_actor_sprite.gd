@@ -87,7 +87,7 @@ func register() -> Array:
 		["la muerte del humano es una pose fija de la hoja", _human_dead_is_fixed],
 		["caminar usa la fila de la orientación", _walk_rows],
 		["el golpe no cambia de fila al mirar de lado", _attack_row_is_fixed],
-		["el golpe se refleja solo mirando a la izquierda", _attack_flip],
+		["el golpe alterna de brazo en golpes seguidos", _attack_alternates_arms],
 		["caminar avanza de fotograma con el tiempo", _walk_advances],
 		["el golpe no se repite y para en el último", _attack_stops_at_end],
 		["repetir la misma animación no la reinicia", _replay_is_noop],
@@ -210,30 +210,62 @@ func _human_dead_is_fixed(ctx: ScriptTestContext) -> void:
 ## El corazón del recorte. Caminar es direccional, así que cada orientación tiene que
 ## caer en su fila: si las dos laterales estuvieran intercambiadas, el personaje
 ## caminaría de espaldas sin que nada fallara.
+##
+## El humano no usa el orden del pack (abajo, izquierda, arriba, derecha): su hoja
+## trae [lateral de pie, frente, derecha, espalda] y la definición mapea frente=1,
+## laterales=2 y espalda=3. La izquierda sale de reflejar el lateral de la derecha
+## (`mirror_side`), así que izquierda y derecha comparten fila y se distinguen por
+## el espejo. El ninja conserva el orden clásico, sin espejos.
 func _walk_rows(ctx: ScriptTestContext) -> void:
 	var sprite := _sprite()
+	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
 	sprite.play(ActorSprite.WALK, true)
 	ctx.check_equal(
 		_frame_facing(sprite, ActorSprite.WALK, Vector2.DOWN),
-		GameConfig.ACTOR_ROW_DOWN * sprite.hframes,
-		"abajo"
+		def.walk_row * sprite.hframes,
+		"abajo (el frente de la hoja)"
 	)
 	ctx.check_equal(
 		_frame_facing(sprite, ActorSprite.WALK, Vector2.UP),
-		GameConfig.ACTOR_ROW_UP * sprite.hframes,
-		"arriba"
+		def.row_up * sprite.hframes,
+		"arriba (la espalda de la hoja)"
 	)
+	if def.mirror_side:
+		ctx.check_equal(
+			_frame_facing(sprite, ActorSprite.WALK, Vector2.LEFT),
+			def.row_side * sprite.hframes,
+			"la izquierda comparte fila con la derecha (el lateral dibujado)"
+		)
+		ctx.check_equal(
+			sprite.flip_h, true, "y se refleja: la hoja solo camina hacia la derecha"
+		)
+		ctx.check_equal(
+			_frame_facing(sprite, ActorSprite.WALK, Vector2.RIGHT),
+			def.row_side_mirrored * sprite.hframes,
+			"la derecha es la misma fila lateral"
+		)
+		ctx.check_equal(sprite.flip_h, false, "y sale sin reflejar")
+	else:
+		ctx.check_equal(
+			_frame_facing(sprite, ActorSprite.WALK, Vector2.LEFT),
+			def.row_side * sprite.hframes,
+			"un lado"
+		)
+		ctx.check_equal(
+			_frame_facing(sprite, ActorSprite.WALK, Vector2.RIGHT),
+			def.row_side_mirrored * sprite.hframes,
+			"el otro lado"
+		)
+		ctx.check_equal(sprite.flip_h, false, "caminar nunca se refleja: cada fila ya es la suya")
+	# El ninja sigue con el orden del pack sin reflejo: la regresión lo comprueba.
+	var ninja := _prepared(ActorVisualCatalog.PLAYER_NINJA)
+	ninja.play(ActorSprite.WALK, true)
 	ctx.check_equal(
-		_frame_facing(sprite, ActorSprite.WALK, Vector2.LEFT),
-		GameConfig.ACTOR_ROW_SIDE * sprite.hframes,
-		"un lado"
+		_frame_facing(ninja, ActorSprite.WALK, Vector2.LEFT),
+		GameConfig.ACTOR_ROW_SIDE * ninja.hframes,
+		"el ninja usa la fila lateral del pack"
 	)
-	ctx.check_equal(
-		_frame_facing(sprite, ActorSprite.WALK, Vector2.RIGHT),
-		GameConfig.ACTOR_ROW_SIDE_MIRRORED * sprite.hframes,
-		"el otro lado"
-	)
-	ctx.check_equal(sprite.flip_h, false, "caminar nunca se refleja: cada fila ya es la suya")
+	ctx.check_equal(ninja.flip_h, false, "y el ninja no refleja su lateral")
 
 
 ## El golpe del pack solo existe mirando al frente. Si la fila cambiara con la
@@ -252,15 +284,43 @@ func _attack_row_is_fixed(ctx: ScriptTestContext) -> void:
 	)
 
 
-func _attack_flip(ctx: ScriptTestContext) -> void:
-	var sprite := _sprite()
-	sprite.play(ActorSprite.ATTACK, true)
-	sprite.set_facing(Vector2.RIGHT)
-	ctx.check_equal(sprite.flip_h, false, "a la derecha no se refleja")
-	sprite.set_facing(Vector2.LEFT)
-	ctx.check_equal(sprite.flip_h, true, "a la izquierda sí")
+## El golpe del humano es un puñetazo con un brazo (la fila 5 de la hoja), así que
+## en golpes seguidos se refleja para salir con un brazo y luego con el otro. Solo
+## cambia el dibujo: daño, alcance y reloj son los mismos en cada golpe. El ninja no
+## alterna: su barrido es un solo gesto fijo.
+func _attack_alternates_arms(ctx: ScriptTestContext) -> void:
+	var sprite := _prepared(ActorVisualCatalog.PLAYER_HUMAN)
+	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_HUMAN)
+	ctx.check(def.alternate_attack, "la definición de la persona alterna brazos")
 	sprite.set_facing(Vector2.DOWN)
-	ctx.check_equal(sprite.flip_h, false, "abajo no se refleja")
+	var flips: Array[bool] = []
+	for _i: int in range(4):
+		sprite.play(ActorSprite.ATTACK, true)
+		flips.append(sprite.flip_h)
+	ctx.check(
+		flips[0] != flips[1],
+		"dos golpes seguidos salen con el mismo brazo (flips %s)" % str(flips)
+	)
+	ctx.check_equal(flips[0], flips[2], "el tercer golpe vuelve al primer brazo")
+	ctx.check_equal(flips[1], flips[3], "y el cuarto al segundo")
+	# Mirando a la izquierda el golpe ya se refleja por la orientación: el alterno
+	# se suma, pero sigue alternando entre golpes.
+	sprite.set_facing(Vector2.LEFT)
+	var left_flips: Array[bool] = []
+	for _i: int in range(2):
+		sprite.play(ActorSprite.ATTACK, true)
+		left_flips.append(sprite.flip_h)
+	ctx.check(
+		left_flips[0] != left_flips[1],
+		"mirando a la izquierda también alterna (flips %s)" % str(left_flips)
+	)
+	# El ninja no alterna: sus dos golpes son idénticos.
+	var ninja := _prepared(ActorVisualCatalog.PLAYER_NINJA)
+	ninja.play(ActorSprite.ATTACK, true)
+	ninja.set_facing(Vector2.DOWN)
+	var ninja_flip := ninja.flip_h
+	ninja.play(ActorSprite.ATTACK, true)
+	ctx.check_equal(ninja.flip_h, ninja_flip, "el ninja no alterna sus golpes")
 
 
 ## El ciclo de caminata tiene que pasar por los cuatro fotogramas y volver al
@@ -271,7 +331,7 @@ func _walk_advances(ctx: ScriptTestContext) -> void:
 	var sprite := _sprite()
 	sprite.play(ActorSprite.WALK, true)
 	sprite.set_facing(Vector2.DOWN)
-	var base := GameConfig.ACTOR_ROW_DOWN * sprite.hframes
+	var base := sprite.frame
 
 	# Cuántos fotogramas de física dura un ciclo entero de caminata.
 	var cycle := int(
@@ -341,6 +401,7 @@ func _attack_stops_at_end(ctx: ScriptTestContext) -> void:
 func _replay_is_noop(ctx: ScriptTestContext) -> void:
 	var sprite := _sprite()
 	sprite.play(ActorSprite.WALK, true)
+	var down_frame := sprite.frame
 	# Se avanza lo que miden un fotograma y medio: suficiente para haber salido del
 	# primero, y no tanto como para haber vuelto a él.
 	for _frame: int in range(
@@ -349,14 +410,14 @@ func _replay_is_noop(ctx: ScriptTestContext) -> void:
 		sprite._process(STEP)
 	var advanced := sprite.frame
 	ctx.check(
-		advanced != GameConfig.ACTOR_ROW_DOWN * sprite.hframes,
+		advanced != down_frame,
 		"el ciclo ha avanzado, está en %d" % advanced
 	)
 	ctx.check(not sprite.play(ActorSprite.WALK), "repetir la animación no devuelve nada")
 	ctx.check_equal(sprite.frame, advanced, "y no reinicia el ciclo")
 	ctx.check(sprite.play(ActorSprite.WALK, true), "pero reiniciarla sí, si se pide")
 	ctx.check_equal(
-		sprite.frame, GameConfig.ACTOR_ROW_DOWN * sprite.hframes, "vuelve al primero"
+		sprite.frame, down_frame, "vuelve al primero"
 	)
 
 
@@ -616,11 +677,14 @@ func _fx_cells(sheet: Texture2D) -> Array:
 ## Píxeles del cuerpo con los pies en el origen: fila de la orientación y fotograma
 ## de reposo, que es la columna 0, igual que los coloca `ActorSprite` al parar.
 func _fx_body_cells(body: Texture2D, direction: Vector2) -> Array[Vector2i]:
-	var row := GameConfig.ACTOR_ROW_SIDE
+	# Las filas del cuerpo son las de la definición del jugador (el humano ordena
+	# las suyas distinto al pack: frente=1, laterales=2, espalda=3).
+	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
+	var row := def.row_side
 	if direction.y < 0.0:
-		row = GameConfig.ACTOR_ROW_UP
+		row = def.row_up
 	elif direction.y > 0.0:
-		row = GameConfig.ACTOR_ROW_DOWN
+		row = def.walk_row
 	var image := body.get_image()
 	var size := GameConfig.ACTOR_FRAME_SIZE
 	var points: Array[Vector2i] = []

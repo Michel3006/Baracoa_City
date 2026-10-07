@@ -23,8 +23,26 @@ var sheet: String = ""
 ## Lado de un frame. El pack usa 16x16; se deja aquí porque una hoja futura
 ## (personas reales) podría traer otra rejilla.
 var frame_size: int = GameConfig.ACTOR_FRAME_SIZE
-## Fila de la orientación de abajo (las otras tres salen sumando `ACTOR_ROW_*`).
+## Fila de la orientación de abajo (el frente). Es la base de la que salen las
+## otras tres en el pack clásico (`walk_row + ACTOR_ROW_*`); una hoja ajena puede
+## ordenar sus filas distinto y entonces se escriben aquí las otras tres.
 var walk_row: int = GameConfig.ACTOR_ROW_DOWN
+## Filas de las otras tres orientaciones, en coordenadas absolutas de la hoja.
+## El pack clásico las tiene en 1, 2 y 3; la persona de bit-era ordena sus filas
+## [lateral de pie, frente, lateral derecho, espalda] = [0, 1, 2, 3], así que
+## escribe aquí la 1, la 2 y la 3 (la 0 queda sin usar: es la pose lateral de pie).
+var row_side: int = GameConfig.ACTOR_ROW_SIDE
+var row_up: int = GameConfig.ACTOR_ROW_UP
+var row_side_mirrored: int = GameConfig.ACTOR_ROW_SIDE_MIRRORED
+## Si la hoja no trae el lateral de la izquierda dibujado: el lado izquierdo sale
+## de reflejar en horizontal el lateral. La persona solo camina hacia la derecha
+## (`Walk Right` del pack de bit-era); el pack clásico trae los dos laterales
+## dibujados y esto va en `false`.
+var mirror_side: bool = false
+## Si el clip del golpe se refleja en golpes alternos, de modo que el puñetazo
+## salga unas veces con un brazo y otras con el otro. Es visual: no toca daño,
+## alcance, cooldown ni ningún valor de juego.
+var alternate_attack: bool = false
 ## Fotogramas por ciclo de caminata y segundos entre cada uno.
 var walk_frames: int = GameConfig.ACTOR_WALK_FRAMES
 var walk_fps: float = GameConfig.ACTOR_WALK_FPS

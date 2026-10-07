@@ -107,13 +107,23 @@ static func definition_of(id: StringName) -> CharacterVisualDefinition:
 
 ## La persona: hoja de bit-era (CC0), 64x128 = 4x8 de 16 px.
 ##
-## Filas 0-3 caminar en las cuatro orientaciones (igual que el ninja), fila 4
-## salto/caída/muerte con la muerte en la columna 2 (yacente, fija), fila 5 golpe
-## con tres fotogramas (la columna 3 queda vacía).
+## OJO al orden de filas: NO es el del pack (abajo, izquierda, arriba, derecha).
+## El autor dibuja [lateral de pie, frente, derecha, espalda] = filas [0, 1, 2, 3]:
+## la 0 es la pose lateral de pie (sin usar), la 1 el frente (abajo), la 2 el
+## lateral caminando a la derecha (`Walk Right`, único lateral) y la 3 la espalda
+## (arriba). Por eso el mapeo escribe la 1, la 2 y la 3, la izquierda refleja la 2,
+## y la fila 4 trae salto/caída/muerte (muerte en la columna 2, yacente, fija) y la
+## 5 el golpe con tres fotogramas (la columna 3 queda vacía).
 static func _human_definition() -> CharacterVisualDefinition:
 	var def := CharacterVisualDefinition.new()
 	def.id = PLAYER_HUMAN
 	def.sheet = "res://assets/characters/human_player.png"
+	def.walk_row = 1
+	def.row_side = 2
+	def.row_up = 3
+	def.row_side_mirrored = 2
+	def.mirror_side = true
+	def.alternate_attack = true
 	def.attack_row = GameConfig.ACTOR_ROW_DOWN + 5
 	def.attack_frames = 3
 	def.dead_row = 4

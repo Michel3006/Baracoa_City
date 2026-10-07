@@ -102,12 +102,15 @@ const PLAYER_VISUAL: StringName = &"player_human"
 ## Lado de un frame de personaje. El pack de sprites usa 16x16, el mismo tamano
 ## que el tile del mapa, asi que un personaje ocupa exactamente un tile de ancho.
 const ACTOR_FRAME_SIZE := 16
-## Filas de una hoja de caminar: abajo, izquierda, arriba, derecha.
+## Filas de una hoja de caminar del pack: abajo, izquierda, arriba, derecha.
 ##
 ## OJO: es la unica convencion del pack que no se puede deducir de los pixeles, y
 ## las hojas laterales son imagenes especulares la una de la otra. Si al jugar el
-## personaje lateral mira al reves, basta con intercambiar `ACTOR_ROW_SIDE` y
-## `ACTOR_ROW_SIDE_MIRRORED`: no hay que tocar ningun otro archivo.
+## personaje lateral del pack mira al reves, basta con intercambiar
+## `ACTOR_ROW_SIDE` y `ACTOR_ROW_SIDE_MIRRORED`. El humano de bit-era no usa estas
+## filas: su hoja las ordena distinto ([lateral de pie, frente, derecha, espalda])
+## y el mapeo vive en su `CharacterVisualDefinition` (`walk_row`, `row_side`,
+## `row_up`, `row_side_mirrored`, `mirror_side`) en `ActorVisualCatalog`.
 const ACTOR_ROW_DOWN := 0
 const ACTOR_ROW_SIDE := 1
 const ACTOR_ROW_UP := 2

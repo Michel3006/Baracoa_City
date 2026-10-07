@@ -45,9 +45,13 @@ Piezas:
 - **`CharacterVisualDefinition`** (`scripts/presentation/actors/character_visual_definition.gd`):
   `RefCounted` de datos puros. Campos: `id`, `sheet`, `frame_size`, `walk_row`,
   `walk_frames`, `walk_fps`, `attack_row`, `attack_frames`, `attack_fps`,
-  `dead_row`, `dead_column`, `dead_directional`. Los valores por defecto son los
-  de la convención antigua, así que una definición mínima replica el
-  comportamiento de siempre y solo hay que escribir lo que cambia.
+  `dead_row`, `dead_column`, `dead_directional`, y desde el arreglo de las
+  direcciones: `row_side`, `row_up`, `row_side_mirrored` (filas absolutas de las
+  otras tres orientaciones), `mirror_side` (el lateral izquierdo sale de reflejar
+  el derecho) y `alternate_attack` (el golpe alterna de brazo en golpes seguidos,
+  solo visual). Los valores por defecto son los de la convención antigua, así que
+  una definición mínima replica el comportamiento de siempre y solo hay que
+  escribir lo que cambia.
 - **`ActorVisualCatalog`**: catálogo de actores. Para el jugador expone los ids
   `PLAYER` (alias), `PLAYER_HUMAN` y `PLAYER_NINJA`, y `active_player()` resuelve
   el alias según `GameConfig.PLAYER_VISUAL`. `definition_of(id)` devuelve la
@@ -83,33 +87,53 @@ README del autor, no contando celdas):
 
 | animación | clips en `ActorSprite` | fila | fotogramas | velocidad | detalle |
 | --- | --- | --- | --- | --- | --- |
-| IDLE | `IDLE` (direccional) | fila de la orientación (0-3) | 1 | — | la pose de pie de cada fila |
-| WALK | `WALK` (direccional) | fila de la orientación (0-3) | 4 | 8 fps | frente, lateral, espalda, lateral espejo |
-| ATTACK | `ATTACK` (fila fija) | **5** | **3** | 20 fps | 3 fotogramas; la columna 3 está vacía y no se lee; 0,15 s ≤ recuperación (0,22 s) |
+| IDLE | `IDLE` (direccional) | la de la orientación (§23.5) | 1 | — | la pose de pie de cada fila |
+| WALK | `WALK` (direccional) | la de la orientación (§23.5) | 4 | 8 fps | frente=1, laterales=2 (derecha tal cual, izquierda reflejada), espalda=3 |
+| ATTACK | `ATTACK` (fila fija) | **5** | **3** | 20 fps | 3 fotogramas; la columna 3 está vacía y no se lee; 0,15 s ≤ recuperación (0,22 s); alterna de brazo en golpes seguidos |
 | DEAD | `DEAD` (fila fija) | **4**, columna **2** | 1 | — | pose yacente real del asset; no cambia con la orientación |
 
 El golpe del humano tiene 3 fotogramas, no 4: la fila 5 es
-`fotograma-idle → arco → impacto` y la cuarta celda está vacía. La velocidad sale
-del clip, no de una constante global, así que cada personaje lleva su ritmo.
+`fotograma-idle → arco → impacto` y la cuarta celda está vacía. Es un puñetazo
+con un solo brazo (el frame de impacto es asimétrico), así que en golpes
+seguidos el reproductor lo refleja (`alternate_attack` en la definición) para
+que salga con un brazo y el siguiente con el otro. Es puramente visual: daño,
+alcance, cooldown y reloj del golpe son idénticos en cada golpe (no se tocan los
+§13-14). La velocidad sale del clip, no de una constante global, así que cada
+personaje lleva su ritmo.
 
 ## 23.5 Direcciones
 
 El sistema sigue usando **4 direcciones** (Sur, Este, Norte, Oeste), como pedía
-la especificación: no se añadieron 8. El mapeo de la hoja humana es idéntico al
-del pack clásico:
+la especificación: no se añadieron 8. **OJO: el orden de filas de la hoja humana
+NO es el del pack clásico.** Casar la hoja píxel a píxel con el README del autor
+(`Idle side, Walk front, Walk Right, Walk back, ...`) da:
 
-    SUR  → fila 0   (ACTOR_ROW_DOWN)
-    ESTE → fila 1   (ACTOR_ROW_SIDE)
-    NORTE→ fila 2   (ACTOR_ROW_UP)
-    OESTE→ fila 3   (ACTOR_ROW_SIDE_MIRRORED)
+    fila 0 = pose lateral de pie / idle lateral   (sin usar para caminar)
+    fila 1 = frente  → SUR     (walk_row, sin reflejo)
+    fila 2 = derecha → ESTE    (row_side_mirrored, sin reflejo)
+                        OESTE  (row_side, la misma fila REFLEJADA)
+    fila 3 = espalda → NORTE   (row_up, sin reflejo)
 
-La advertencia clásica sigue valiendo: las filas laterales de la hoja son
+O sea: el frente es la fila 1, la espalda la 3, y la hoja solo trae **un**
+lateral (el de la derecha, `Walk Right`); la izquierda sale de reflejar esa misma
+fila (`mirror_side = true` en la definición del humano). Por eso izquierda y
+derecha comparten fila y se distinguen por el espejo, y por eso antes del arreglo
+el jugador «caminaba abajo» al ir a la izquierda (la fila 1 es el frente), «hacia
+arriba» al ir a la derecha (la fila 3 es la espalda) y «de lado» al ir arriba o
+abajo (las filas 2 y 0 son los laterales).
+
+Todo este mapeo vive **en la definición del humano** (`walk_row`, `row_side`,
+`row_up`, `row_side_mirrored`, `mirror_side` en `ActorVisualCatalog`), no en
+constantes globales: `ActorSprite` lee las filas de la definición. Los valores
+por defecto de `CharacterVisualDefinition` siguen siendo las filas del pack
+(0/1/2/3), así que el ninja y los enemigos no cambian.
+
+La advertencia clásica sigue valiendo: las filas laterales de una hoja son
 especulares la una de la otra, así que **no se puede deducir cuál es izquierda y
-cuál derecha mirando los píxeles**. Se inspeccionó la simetría (las filas 1 y 3
-coinciden en ~84 % de sus píxeles, un poco más simétricas que en el ninja), pero
-la prueba definitiva es jugar. Si el lateral saliera espejado, se intercambian
-`ACTOR_ROW_SIDE` y `ACTOR_ROW_SIDE_MIRRORED` en `GameConfig` y no se toca nada
-más; el knob ya estaba documentado.
+cuál derecha mirando los píxeles**. Aquí se resolvió con el README del autor
+(`Walk Right`) y con el informe de jugador; la prueba definitiva es jugar. Si el
+lateral saliera espejado, se intercambian `row_side`/`row_side_mirrored` (o el
+`mirror_side`) en la definición del humano y no se toca nada más.
 
 ## 23.6 Frame size
 
