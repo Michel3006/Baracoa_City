@@ -284,14 +284,20 @@ func _attack_row_is_fixed(ctx: ScriptTestContext) -> void:
 	)
 
 
-## El golpe del humano es un puñetazo con un brazo (la fila 5 de la hoja), así que
-## en golpes seguidos se refleja para salir con un brazo y luego con el otro. Solo
-## cambia el dibujo: daño, alcance y reloj son los mismos en cada golpe. El ninja no
-## alterna: su barrido es un solo gesto fijo.
+## El golpe del humano es un puñetazo (la fila 5 de la hoja). De frente o de
+## espaldas se ve con las dos manos: en golpes seguidos se refleja para salir con
+## una mano y luego con la otra, siempre hacia donde se mira. De lado la hoja solo
+## guarda UN puño (el frame de impacto es asimétrico), así que ahí no se refleja en
+## golpes alternos — medio golpe saldría hacia atrás — y el puño sale siempre hacia
+## la orientación (izquierda reflejada, derecha tal cual). Solo cambia el dibujo:
+## daño, alcance y reloj son los mismos en cada golpe. El ninja no alterna: su
+## barrido es un solo gesto fijo.
 func _attack_alternates_arms(ctx: ScriptTestContext) -> void:
 	var sprite := _prepared(ActorVisualCatalog.PLAYER_HUMAN)
 	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_HUMAN)
 	ctx.check(def.alternate_attack, "la definición de la persona alterna brazos")
+	# De frente se ven las dos manos: cada golpe nuevo sale con la otra, y los dos
+	# hacia donde se mira.
 	sprite.set_facing(Vector2.DOWN)
 	var flips: Array[bool] = []
 	for _i: int in range(4):
@@ -299,21 +305,23 @@ func _attack_alternates_arms(ctx: ScriptTestContext) -> void:
 		flips.append(sprite.flip_h)
 	ctx.check(
 		flips[0] != flips[1],
-		"dos golpes seguidos salen con el mismo brazo (flips %s)" % str(flips)
+		"dos golpes seguidos salen con la misma mano (flips %s)" % str(flips)
 	)
-	ctx.check_equal(flips[0], flips[2], "el tercer golpe vuelve al primer brazo")
-	ctx.check_equal(flips[1], flips[3], "y el cuarto al segundo")
-	# Mirando a la izquierda el golpe ya se refleja por la orientación: el alterno
-	# se suma, pero sigue alternando entre golpes.
+	ctx.check_equal(flips[0], flips[2], "el tercer golpe vuelve a la primera mano")
+	ctx.check_equal(flips[1], flips[3], "y el cuarto a la segunda")
+	# De lado la hoja solo tiene un puño: el golpe sale siempre hacia donde se mira
+	# y no alterna (alternar lo mandaría hacia atrás).
 	sprite.set_facing(Vector2.LEFT)
 	var left_flips: Array[bool] = []
 	for _i: int in range(2):
 		sprite.play(ActorSprite.ATTACK, true)
 		left_flips.append(sprite.flip_h)
-	ctx.check(
-		left_flips[0] != left_flips[1],
-		"mirando a la izquierda también alterna (flips %s)" % str(left_flips)
+	ctx.check_equal(
+		left_flips, [true, true],
+		"a la izquierda el puño sale siempre hacia la izquierda (flips %s)" % str(left_flips)
 	)
+	sprite.set_facing(Vector2.RIGHT)
+	ctx.check_equal(sprite.flip_h, false, "a la derecha el puño sale tal cual, sin reflejar")
 	# El ninja no alterna: sus dos golpes son idénticos.
 	var ninja := _prepared(ActorVisualCatalog.PLAYER_NINJA)
 	ninja.play(ActorSprite.ATTACK, true)

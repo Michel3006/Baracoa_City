@@ -228,9 +228,9 @@ func play(name: StringName, restart: bool = false) -> bool:
 	if _clip == name and _playing and not restart:
 		return false
 	if name == ATTACK and _alternate_attack:
-		# Un golpe nuevo alterna el brazo: el puñetazo se refleja en golpes
-		# alternos para que salga con un brazo y el siguiente con el otro. Es lo
-		# único que cambia entre golpe y golpe: ni daño, ni alcance, ni reloj.
+		# Un golpe nuevo alterna de mano. Solo cambia el dibujo: ni daño, ni
+		# alcance, ni reloj. El puño sale siempre hacia donde se mira (de lado no
+		# se refleja en golpes alternos: la hoja solo tiene un puño).
 		_attack_parity = not _attack_parity
 	_clip = name
 	_elapsed = 0.0
@@ -309,17 +309,25 @@ func _refresh() -> void:
 ## Un clip direccional ya trae las cuatro orientaciones en sus propias filas, así
 ## que solo se refleja cuando la hoja no trae el lateral de la izquierda dibujado
 ## (el humano de bit-era camina solo hacia la derecha y la izquierda es el espejo).
-## Uno de fila fija (el golpe) solo existe mirando al frente, y para que no salga
-## de frente cuando el actor va de lado se refleja; si el actor alterna brazos,
-## cada golpe nuevo se refleja también, para que el puñetazo salga con un brazo y
-## el siguiente con el otro.
+## Uno de fila fija (el golpe) solo existe mirando al frente. De frente o de
+## espaldas el puñetazo se ve con las dos manos, así que cada golpe nuevo se
+## refleja (alterna de mano) y los dos salen hacia donde se mira. De lado la hoja
+## solo guarda UN puño (el frame de impacto es asimétrico): reflejarlo en golpes
+## alternos mandaría medio golpe hacia atrás, así que el puño sale siempre hacia
+## donde se mira — izquierda reflejada, derecha tal cual — y es lo único que se
+## dibuja; la dirección del golpe la llevan la hitbox y el arco de efecto, que van
+## hacia la orientación.
 func _apply_flip(clip: Dictionary) -> void:
 	if bool(clip.get("directional", false)):
 		flip_h = _mirror_side and _facing == Vector2.LEFT
 		return
-	flip_h = _facing == Vector2.LEFT
-	if _alternate_attack and _clip == ATTACK:
-		flip_h = flip_h != _attack_parity
+	if _alternate_attack and _clip == ATTACK and is_zero_approx(_facing.x):
+		# De frente (o de espaldas, misma fila fija) se ven las dos manos: alterna.
+		flip_h = _attack_parity
+		return
+	# De lado (o un actor que no alterna) el puño va hacia la orientación, y la
+	# muerte fija del humano también se refleja solo mirando a la izquierda.
+	flip_h = _facing.x < 0.0
 
 
 ## Fila absoluta de la hoja en la que se dibuja la orientación actual.

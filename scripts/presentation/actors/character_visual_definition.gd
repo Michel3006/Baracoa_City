@@ -39,9 +39,12 @@ var row_side_mirrored: int = GameConfig.ACTOR_ROW_SIDE_MIRRORED
 ## (`Walk Right` del pack de bit-era); el pack clásico trae los dos laterales
 ## dibujados y esto va en `false`.
 var mirror_side: bool = false
-## Si el clip del golpe se refleja en golpes alternos, de modo que el puñetazo
-## salga unas veces con un brazo y otras con el otro. Es visual: no toca daño,
-## alcance, cooldown ni ningún valor de juego.
+## Si el clip del golpe se refleja en golpes alternos para que el puñetazo salga
+## unas veces con una mano y otras con la otra, siempre hacia donde se mira. De
+## lado la hoja solo guarda un puño, así que ahí no se refleja en golpes alternos:
+## el puño sale siempre hacia la orientación (izquierda reflejada, derecha tal
+## cual) y la dirección del golpe la llevan la hitbox y el arco de efecto. Es
+## visual: no toca daño, alcance, cooldown ni ningún valor de juego.
 var alternate_attack: bool = false
 ## Fotogramas por ciclo de caminata y segundos entre cada uno.
 var walk_frames: int = GameConfig.ACTOR_WALK_FRAMES

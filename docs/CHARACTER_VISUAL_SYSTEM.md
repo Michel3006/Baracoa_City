@@ -89,17 +89,22 @@ README del autor, no contando celdas):
 | --- | --- | --- | --- | --- | --- |
 | IDLE | `IDLE` (direccional) | la de la orientación (§23.5) | 1 | — | la pose de pie de cada fila |
 | WALK | `WALK` (direccional) | la de la orientación (§23.5) | 4 | 8 fps | frente=1, laterales=2 (derecha tal cual, izquierda reflejada), espalda=3 |
-| ATTACK | `ATTACK` (fila fija) | **5** | **3** | 20 fps | 3 fotogramas; la columna 3 está vacía y no se lee; 0,15 s ≤ recuperación (0,22 s); alterna de brazo en golpes seguidos |
+| ATTACK | `ATTACK` (fila fija) | **5** | **3** | 20 fps | 3 fotogramas; la columna 3 está vacía y no se lee; 0,15 s ≤ recuperación (0,22 s); de frente/espalda alterna de mano en golpes seguidos, de lado el puño va siempre hacia la orientación |
 | DEAD | `DEAD` (fila fija) | **4**, columna **2** | 1 | — | pose yacente real del asset; no cambia con la orientación |
 
 El golpe del humano tiene 3 fotogramas, no 4: la fila 5 es
 `fotograma-idle → arco → impacto` y la cuarta celda está vacía. Es un puñetazo
-con un solo brazo (el frame de impacto es asimétrico), así que en golpes
-seguidos el reproductor lo refleja (`alternate_attack` en la definición) para
-que salga con un brazo y el siguiente con el otro. Es puramente visual: daño,
-alcance, cooldown y reloj del golpe son idénticos en cada golpe (no se tocan los
-§13-14). La velocidad sale del clip, no de una constante global, así que cada
-personaje lleva su ritmo.
+con un solo brazo (el frame de impacto es asimétrico). De frente o de espaldas se
+ve con las dos manos, así que en golpes seguidos el reproductor lo refleja
+(`alternate_attack` en la definición): un puñetazo con una mano, el siguiente con
+la otra, **los dos hacia donde se mira**. De lado la hoja solo guarda ese único
+puño, así que ahí no se refleja en golpes alternos — mandaría medio golpe hacia
+atrás — y el puño sale siempre hacia la orientación (izquierda reflejada, derecha
+tal cual); la dirección del golpe la llevan la hitbox y el arco de efecto, que
+siempre van hacia la orientación. Es puramente visual: daño, alcance, cooldown y
+reloj del golpe son idénticos en cada golpe (no se tocan los §13-14). La
+velocidad sale del clip, no de una constante global, así que cada personaje lleva
+su ritmo.
 
 ## 23.5 Direcciones
 
