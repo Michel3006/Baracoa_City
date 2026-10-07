@@ -51,12 +51,12 @@ class Entry extends RefCounted:
 ## comprueba `npc_combat_runner`, que sí tiene la escena montada.
 static func demo() -> Array[Entry]:
 	return [
-		Entry.new(NpcKind.SLIME, NpcKind.display_name(NpcKind.SLIME), NpcBehavior.weak(), Vector2i(15, 12)),
-		Entry.new(NpcKind.SLIME, NpcKind.display_name(NpcKind.SLIME), NpcBehavior.weak(), Vector2i(10, 13)),
-		Entry.new(NpcKind.SPIDER, NpcKind.display_name(NpcKind.SPIDER), NpcBehavior.weak(), Vector2i(8, 11)),
-		Entry.new(NpcKind.OWL, NpcKind.display_name(NpcKind.OWL), NpcBehavior.strong(), Vector2i(12, 16)),
-		Entry.new(NpcKind.LIZARD, NpcKind.display_name(NpcKind.LIZARD), NpcBehavior.strong(), Vector2i(17, 8)),
-		Entry.new(NpcKind.LIZARD, NpcKind.display_name(NpcKind.LIZARD), NpcBehavior.strong(), Vector2i(19, 16)),
+		Entry.new(NpcKind.VANDAL, NpcKind.display_name(NpcKind.VANDAL), NpcBehavior.weak(), Vector2i(15, 12)),
+		Entry.new(NpcKind.VANDAL, NpcKind.display_name(NpcKind.VANDAL), NpcBehavior.weak(), Vector2i(10, 13)),
+		Entry.new(NpcKind.ROBBER, NpcKind.display_name(NpcKind.ROBBER), NpcBehavior.weak(), Vector2i(8, 11)),
+		Entry.new(NpcKind.BRUTE, NpcKind.display_name(NpcKind.BRUTE), NpcBehavior.strong(), Vector2i(12, 16)),
+		Entry.new(NpcKind.GANGSTER, NpcKind.display_name(NpcKind.GANGSTER), NpcBehavior.strong(), Vector2i(17, 8)),
+		Entry.new(NpcKind.GANGSTER, NpcKind.display_name(NpcKind.GANGSTER), NpcBehavior.strong(), Vector2i(19, 16)),
 	]
 
 

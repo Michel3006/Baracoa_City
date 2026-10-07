@@ -72,13 +72,19 @@ func _build_actor() -> void:
 
 ## Elige la hoja del sprite a partir del tipo de enemigo del dominio, y le pasa la
 ## velocidad con la que se mueve. La velocidad la decide `NpcBehavior`, que es donde
-## vive la estadística: la vista no sabe si un slime es más lento que un lagarto.
+## vive la estadística: la vista no sabe si un Matón es más lento que un Vándalo.
+##
+## Con la hoja llega el tinte de reposo: los cuatro tipos son la misma persona, y
+## el color de la ropa es lo único que los distingue en pantalla. Se aplica aquí y
+## no en `_ready()` porque el tipo llega después, desde el presentador.
 func set_kind(kind: StringName) -> void:
 	if _actor == null:
 		return
 	if not ActorVisualCatalog.apply_to(kind, _actor):
 		GameLogger.warning("NPC sin sprite: %s" % kind, "NpcView")
 		_actor.visible = false
+	tint = ActorVisualCatalog.tint_of(kind)
+	_apply_tint()
 	_refresh_animation()
 
 

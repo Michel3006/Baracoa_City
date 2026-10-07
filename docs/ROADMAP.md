@@ -10,8 +10,9 @@ PLANNING -> FOUNDATION -> MVP_OFFLINE -> MULTIPLAYER_PROTOTYPE
          -> PERSISTENCE -> WORLD_EXPANSION -> LIFE_SYSTEMS -> MUNICIPALITY
 ```
 
-Estado actual: **Fase 1 (MVP_OFFLINE) cerrada** — remates de UI hechos; quedan los
-dos remates que dependen de texturas/play-test y la Fase 2.
+Estado actual: **Fase 1 (MVP_OFFLINE) cerrada** — remates de UI hechos y los
+enemigos convertidos en personas (misma hoja y mismas animaciones que el jugador);
+queda un remate que depende de play-test y la Fase 2.
 
 ## Fase 0 — Preparación ✅
 
@@ -73,12 +74,17 @@ Hechos en el cierre de la fase:
 
 Pendientes, que necesitan algo de fuera:
 
-- [ ] **Fila de ataque lateral de los enemigos**: las hojas del pack (64x64) solo
-      tienen filas de caminar; el golpe reutiliza la pose frontal. Necesita
-      texturas nuevas — el formato exacto está en `docs/assets/TEXTURAS.md`
-      (§2.1) — o se deja como está.
 - [ ] **Ajuste del enemigo fuerte**: un duro mata a un jugador quieto en ~15 s.
       Dentro de lo razonable; se ajusta con feedback de juego real.
+
+Resuelto sin esperar texturas:
+
+- [x] **Fila de ataque de los enemigos**: se pidió una fila de ataque para las
+      hojas de los bichos, y se resolvió de otra manera. Los cuatro tipos son ahora
+      personas que usan la hoja del jugador (`human_player.png`) con un tinte de
+      paleta por tipo, así que golpean, caminan y mueren igual que el protagonista
+      y las hojas de los bichos se borraron. Detalle en `docs/assets/TEXTURAS.md`
+      (§2.1).
 
 ## Fase 2 — Multijugador
 

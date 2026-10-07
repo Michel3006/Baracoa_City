@@ -31,7 +31,7 @@ var director: NpcDirector = null
 ## tener que recorrer los nodos.
 var _presenters: Dictionary = {}
 
-## Capa de efectos del mundo, para que el arco del zarpazo salga en su sitio. La
+## Capa de efectos del mundo, para que el arco del golpe salga en su sitio. La
 ## inyecta `MainWorldView.setup_npcs()`.
 var _fx_parent: Node2D = null
 

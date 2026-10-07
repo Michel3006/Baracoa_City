@@ -54,9 +54,11 @@ Piezas:
   escribir lo que cambia.
 - **`ActorVisualCatalog`**: catálogo de actores. Para el jugador expone los ids
   `PLAYER` (alias), `PLAYER_HUMAN` y `PLAYER_NINJA`, y `active_player()` resuelve
-  el alias según `GameConfig.PLAYER_VISUAL`. `definition_of(id)` devuelve la
-  definición del jugador (y de futuras personas) y `null` para los enemigos, que
-  conservan la ruta clásica `configure()`.
+  el alias según `GameConfig.PLAYER_VISUAL`. Para los enemigos expone `NPC_HUMAN`
+  y devuelve la misma definición que la persona a los cuatro tipos de `NpcKind`
+  (`_npc_human_definition()`): misma hoja, mismas filas, mismo golpe y misma
+  muerte que el jugador. `tint_of(id)` da el color de reposo de cada tipo, que es
+  lo único que los separa en pantalla al compartir hoja.
 - **`ActorSprite`**: `apply_definition(def)` carga la hoja, la recorta con el
   `frame_size` de la definición y monta los clips IDLE / WALK / ATTACK / DEAD. El
   clip DEAD admite ahora una columna base: un frame fijo (la muerte yacente del
@@ -131,7 +133,8 @@ Todo este mapeo vive **en la definición del humano** (`walk_row`, `row_side`,
 `row_up`, `row_side_mirrored`, `mirror_side` en `ActorVisualCatalog`), no en
 constantes globales: `ActorSprite` lee las filas de la definición. Los valores
 por defecto de `CharacterVisualDefinition` siguen siendo las filas del pack
-(0/1/2/3), así que el ninja y los enemigos no cambian.
+(0/1/2/3), así que el ninja no cambia. Los enemigos tampoco: usan la definición
+entera de la persona.
 
 La advertencia clásica sigue valiendo: las filas laterales de una hoja son
 especulares la una de la otra, así que **no se puede deducir cuál es izquierda y
@@ -162,6 +165,8 @@ Añadir otro personaje humano (un ciudadano, un policía, un médico, un enemigo
 humano) **sin tocar gameplay** es: 1) copiar su hoja a `assets/characters/`,
 2) crear una `CharacterVisualDefinition` con su fila de golpe, sus fotogramas y
 su muerte, y 3) registrarla en `ActorVisualCatalog`. La vista (`ActorSprite`) no
-se reescribe: ya lee filas, fotogramas, fps y columna de la definición. Los NPCs
-pueden seguir usando enemigos lógicos + visual humano más adelante porque la
-apariencia quedó separada de `NpcKind` (§20 de la especificación).
+se reescribe: ya lee filas, fotogramas, fps y columna de la definición. De hecho
+ya se hizo una vez para los enemigos: los cuatro tipos de `NpcKind` son personas
+con la hoja del jugador y un tinte de paleta por tipo (`tint_of`), que es la misma
+receta que describe este aparte. La apariencia quedó separada de `NpcKind`
+(§20 de la especificación), así que un ciudadano futuro entra sin tocar gameplay.

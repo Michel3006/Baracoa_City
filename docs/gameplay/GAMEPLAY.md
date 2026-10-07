@@ -275,12 +275,21 @@ apagados para probar el movimiento y el mapa sin que la IA se meta en medio: con
 bandera en `true` se juega lo que se describe abajo, y en `false` la zona queda
 despejada.
 
-Seis enemigos de cuatro tipos del pack, con tres débiles y tres duros:
+Seis enemigos de cuatro tipos, con tres débiles y tres duros:
 
 | tipo | vida | daño | alcance | velocidad |
 | --- | --- | --- | --- | --- |
-| Limo, araña | 24 | 4 | 13 px | lenta |
-| Búho, lagarto | 40 | 8 | 16 px | rápida |
+| Vándalo, Atracador | 24 | 4 | 13 px | lenta |
+| Matón, Pandillero | 40 | 8 | 16 px | rápida |
+
+**Son personas.** Los cuatro tipos usan la misma hoja de sprites que el jugador
+(`human_player.png`), así que caminan en las cuatro orientaciones, golpean con el
+mismo puñetazo de tres fotogramas y mueren tumbados en la misma pose que el
+protagonista. Lo que los distingue en pantalla es el nombre y el color de la ropa,
+que sale de un tinte por tipo (`ActorVisualCatalog.tint_of`): naranja el Vándalo,
+azul el Atracador, verde el Matón y amarillo el Pandillero. Ninguno de los cuatro
+es el rojo de `HURT_TINT` ni el violeta de `STUN_TINT`, para que el color propio
+no se confunda con "acabo de recibir un golpe".
 
 Cómo se comportan:
 
@@ -302,13 +311,15 @@ con `NpcState.transition_to()`. Ojo: el grafo inicialmente no permitía pasar de
 WANDER a ATTACK, así que un enemigo en reposo nunca podía pegar. Está arreglado, y
 hay un caso que lo fija (`_attack_from_rest`).
 
-Dos cosas que no están y conviene saber:
+Convence saber esto sobre su aspecto:
 
-- Los enemigos del pack **no tienen fila de golpe propia**: reutilizan la pose de
-  frente, así que de lado el fotograma no encaja del todo.
-- Cuando un enemigo golpea **sale un zarpazo** en pantalla: el mismo efecto que el
-  arco del jugador, con la hoja de zarpas del pack (`assets/fx/claw.png`), mismo
-  recorte y mismo origen.
+- Los enemigos **no tienen hoja propia**: comparten la de la persona, y eso es lo
+  que les da la fila de golpe que antes les faltaba. Si algún día vuelve a haber un
+  enemigo con hoja de monstruo, habrá que darle su propia fila de ataque (el
+  formato está en `docs/assets/TEXTURAS.md`).
+- Cuando un enemigo golpea **sale el mismo arco que el del jugador**
+  (`assets/fx/slash.png`), con el mismo recorte y el mismo origen. Antes usaba una
+  hoja de zarpas que ya no existe.
 
 Ley del tinte rojo: **al recibir daño, todo ser (jugador y enemigos) se tiñe de
 rojo (`HURT_TINT`) mientras dura su invulnerabilidad**. Es la lectura común de

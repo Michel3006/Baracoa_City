@@ -20,7 +20,7 @@ signal moved(position: Vector2, direction: Vector2)
 var id: int = 0
 var display_name: String = "NPC"
 ## Id del tipo de enemigo. Lo usa la presentación para elegir hoja de sprites.
-var kind: StringName = &"slime"
+var kind: StringName = NpcKind.default_kind()
 ## Puesto de arranque y límite hasta el que se aleja de él. La correa es lo que
 ## impide que un enemigo deje al NPC persiguiendo al jugador hasta el otro mapa.
 var home: Vector2 = Vector2.ZERO

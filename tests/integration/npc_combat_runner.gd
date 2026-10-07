@@ -270,7 +270,7 @@ func _npcs_are_bodies() -> void:
 ## un `CharacterBody2D` que nace dentro de un `StaticBody2D` se queda encajonado y su
 ## IA choca contra la pared cada fotograma sin poder salir de ella.
 ##
-## Ya pasó: el lagarto del tile (14, 25) nació dentro de un edificio y no se movía. Por
+## Ya pasó: un enemigo del tile (14, 25) nació dentro de un edificio y no se movía. Por
 ## eso esto es un caso y no una nota en el comentario de la tabla.
 func _npcs_not_in_walls() -> void:
 	for presenter: NpcPresenter in _spawner().presenters():
@@ -461,9 +461,9 @@ func _npc_hits_player() -> void:
 ##
 ## Hasta ahora el NPC quitaba vida sin que saliera nada en pantalla: la pose de
 ## golpe sí se lanzaba, pero no había arco, así que en una pelea no se distinguía un
-## zarpazo de un encontrado. El arco va a la misma capa que el del jugador y se
+## golpe de un encontrado. El arco va a la misma capa que el del jugador y se
 ## suelta en el mismo fotograma en que empieza la pose (`attack_started`), no cuando
-## el golpe conecta: un zarpazo fallado también se ve, que es como funciona un golpe.
+## el golpe conecta: un golpe fallado también se ve, que es como funciona un golpe.
 ##
 ## El caso mide la cadena entera: caso de uso -> señal -> presentador -> efecto en la
 ## capa del mundo. Si el presentador perdiera el cable del generador de efectos, la
@@ -484,7 +484,7 @@ func _npc_slash_spawns() -> void:
 	# `try_attack()` se rechazaría por cooldown, que no es lo que se mide aquí.
 	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
 
-	_context.check(combat.try_attack(Vector2.RIGHT), "el zarpazo sale")
+	_context.check(combat.try_attack(Vector2.RIGHT), "el golpe sale")
 	await _settle(2)
 	_context.check(layer.get_child_count() >= 1, "aparece el arco del NPC")
 	if layer.get_child_count() >= 1:
@@ -496,8 +496,8 @@ func _npc_slash_spawns() -> void:
 				texture_path = frames.texture.resource_path
 			_context.check_equal(
 				texture_path,
-				SlashEffect.NPC_SHEET,
-				"y con la hoja de zarpazo, no con la espada del jugador"
+				SlashEffect.SHEET,
+				"y con la misma hoja que el jugador, que los dos son personas"
 			)
 
 	await _drain_fx(layer)
@@ -539,7 +539,7 @@ func _player_flashes_when_hurt() -> void:
 	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
 
 	var before := _session().player.health.current
-	_context.check(combat.try_attack(Vector2.LEFT), "el zarpazo sale")
+	_context.check(combat.try_attack(Vector2.LEFT), "el golpe sale")
 	_context.check(combat.strike([_combat()]) == 1, "el golpe le llega al jugador")
 	await _settle(2)
 

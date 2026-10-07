@@ -19,58 +19,53 @@ recorte:
 
 | archivo | qué es | rejilla |
 | --- | --- | --- |
-| `assets/characters/human_player.png` | persona (bit-era, CC0): el jugador por defecto (64x128) | 16x16, 4 columnas x 8 filas: filas 0-3 caminar (abajo/lateral/arriba/lateral espejo), fila 4 salto/caída/muerte (muerte en columna 2, yacente), fila 5 golpe (3 fotogramas, la columna 3 queda vacía), filas 6-7 vacías |
+| `assets/characters/human_player.png` | persona (bit-era, CC0): el jugador por defecto y los cuatro tipos de enemigo (64x128) | 16x16, 4 columnas x 8 filas: filas 0-3 caminar (abajo/lateral/arriba/lateral espejo), fila 4 salto/caída/muerte (muerte en columna 2, yacente), fila 5 golpe (3 fotogramas, la columna 3 queda vacía), filas 6-7 vacías |
 | `assets/characters/ninja_blue.png` | ninja clásico del pack: fallback del jugador (64x112) | 16x16, 4 columnas x 7 filas: filas 0-3 caminar, fila 4 golpe, filas 5-6 salto/objeto |
-| `assets/characters/slime.png` | enemigo slime (64x64) | 16x16, 4 filas de caminar, sin fila de ataque |
-| `assets/characters/owl.png` | enemigo búho (64x64) | ídem |
-| `assets/characters/spider_red.png` | enemigo araña (64x64) | ídem |
-| `assets/characters/lizard.png` | enemigo lagarto (64x64) | ídem |
 | `assets/weapons/blade.png` | cuchillo (6x11) | el sprite es el icono y el arma en mano |
 | `assets/weapons/rock.png` | piedra (3x16) | ídem |
-| `assets/fx/slash.png` | arco de golpe del jugador (128x32) | **32x32**, 4 fotogramas en una sola fila — no es 16x32 |
-| `assets/fx/claw.png` | zarpas de golpe de los enemigos (128x32) | ídem |
+| `assets/fx/slash.png` | arco de golpe del jugador y de los enemigos (128x32) | **32x32**, 4 fotogramas en una sola fila — no es 16x32 |
 | `assets/environment/kenney_tiny_dungeon/Tilemap/tilemap.png` | atlas del terreno (203x186) | 16x16 con 1 px de separación, 12x11 celdas |
+
+Los enemigos no tienen hoja propia: comparten la de la persona y se diferencian por
+el nombre (`NpcKind`) y por un tinte de paleta (`ActorVisualCatalog.tint_of`, con
+los cuatro colores en `GameConfig.NPC_TINT_*`). Así el golpe, la caminata y la
+muerte de un enemigo son literalmente los del jugador, sin una segunda hoja que
+mantener. Las hojas de los antiguos bichos (`slime`, `owl`, `spider_red`,
+`lizard`) y `assets/fx/claw.png` (las zarpas) se borraron el día que los
+enemigos pasaron a ser personas.
 
 Casi todo el decorado del mundo (árboles, piedras, muros de casa) está dibujado
 con rectángulos desde el código y no necesita textura.
 
 ## 2. Necesarias ahora (cierre de Fase 1)
 
-Solo hay un hueco real, y es el único remate de Fase 1 que espera una textura:
+### 2.1. Por qué ya no hace falta una fila de ataque para los enemigos
 
-### 2.1. Fila de ataque de los cuatro enemigos
+Se había pedido, para cada uno de los cuatro enemigos, una fila nueva de ataque
+añadida a su hoja (64x64 -> 64x80): sus hojas solo traían filas de caminar, y al
+atacar de lado el fotograma no encajaba. **Quedó resuelto de otra manera y ya no
+hay textura que traer.**
 
-Hoy el golpe de los enemigos reutiliza la pose de caminar de frente: el pack solo
-trae filas de caminar, y al atacar de lado el fotograma no encaja (está anotado en
-`ActorVisualCatalog.attack_row_of`).
+Los enemigos pasaron a ser personas: los cuatro tipos usan `human_player.png`,
+la misma hoja que el jugador (`ActorVisualCatalog._npc_human_definition()`), y se
+distinguen por el nombre y por un tinte de paleta (`tint_of`, con los colores en
+`GameConfig.NPC_TINT_*`). El golpe es ya el puñetazo de tres fotogramas de la
+fila 5, la caminata es la del jugador en las cuatro orientaciones y la muerte es
+la pose yacente de la fila 4, igual en las cuatro direcciones: no solo se ganó la
+fila de ataque, también se ganó la muerte de pie, que era el otro defecto de las
+hojas viejas.
 
-**Qué traer:** para cada uno de los cuatro enemigos (slime, búho, araña, lagarto),
-una **fila nueva de 4 fotogramas de 16x16** con la pose de ataque, añadida a su
-hoja actual. La hoja pasa de 64x64 a **64x80** (5 filas): las cuatro de caminar
-que ya tienen, y la quinta la del golpe — exactamente la misma disposición que ya
-usa el jugador (cuatro filas de caminar y el golpe debajo, `PLAYER_ATTACK_ROW`).
+Las hojas de los bichos (`slime.png`, `owl.png`, `spider_red.png`, `lizard.png`)
+y `assets/fx/claw.png` (las zarpas) se borraron. Si algún día vuelve a existir un
+enemigo con hoja propia, el encargo vuelve a estar en pie con este mismo formato:
 
-Especificación de la fila:
-
-- 4 columnas x 1 fila de 16x16, en una sola fila, pegadas (sin separación).
-- La pose es la de golpe **de frente**, en el estilo de cada enemigo (misma
-  paleta, mismo tamaño de cuerpo que sus filas de caminar).
+- 4 columnas x 1 fila de 16x16, en una sola fila, pegadas (sin separación), con la
+  pose de ataque de frente.
 - Los 4 fotogramas tienen que caber en la duración del golpe
-  (`ACTOR_ATTACK_RECOVERY`), como los del jugador; el código los reproduce a
-  `ACTOR_ATTACK_FPS` (20) y se queda en el último.
-- El código refleja la fila en horizontal cuando el enemigo mira a la izquierda,
-  igual que hace con el jugador, así que no hay que dibujar el golpe lateral ni el
-  de espaldas: con la pose frontal basta para que las cuatro orientaciones se lean.
-
-Para casar la fila con la hoja, comparar el resultado con el `Preview.gif` del
-pack (si el enemigo lo trae) píxel a píxel, como se hizo con las hojas de efecto:
-contar celdas no basta.
-
-**Cableado cuando lleguen:** `ActorVisualCatalog.attack_row_of()` devuelve la fila
-4 (`GameConfig.ACTOR_ROW_DOWN + 4`) para los cuatro enemigos, igual que el
-jugador, y se añade un caso a `test_actor_sprite` que compruebe la rejilla de las
-cuatro hojas (64x80, golpe en la fila 4). Hasta que no estén, el golpe sigue
-reutilizando la pose frontal sin que nada se rompa.
+  (`ACTOR_ATTACK_RECOVERY`); el código los reproduce a `ACTOR_ATTACK_FPS` y se
+  queda en el último.
+- Para casar la fila con la hoja, comparar con el `Preview.gif` del pack píxel a
+  píxel: contar celdas no basta.
 
 ### 2.2. Icono de la baya (opcional, pero cómodo)
 
@@ -110,9 +105,10 @@ amplíe el juego. No traer nada de esto todavía: el juego no lo consume y los
 catálogos no lo referencian.
 
 **Fase 4 — mundo ampliado:** tiles y props de la municipalidad (calles/aceras,
-edificios con fachadas, interiores, puertas), más NPC con sus hojas (mismo formato
-que los enemigos: 64x64, cuatro filas de caminar + fila de golpe), y más objetos
-colocables (con icono para la mochila).
+edificios con fachadas, interiores, puertas), más NPC con sus hojas (el mismo
+formato que el jugador: 64x128, cuatro filas de caminar, muerte y golpe de tres
+fotogramas — o la propia `human_player.png` con otro tinte, que es lo que hoy
+hacen los enemigos), y más objetos colocables (con icono para la mochila).
 
 **Fase 5 — sistemas de vida:** sprites de dinero/moneda, comida y bebida
 (consumibles con icono), objetos de trabajo y propiedades.

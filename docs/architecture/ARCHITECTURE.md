@@ -320,11 +320,9 @@ paquetes originales.
 
 | hoja | tamaño | rejilla |
 | --- | --- | --- |
-| `assets/characters/human_player.png` | 64x128 | 4 x 8 de 16x16 (jugador, por defecto) |
+| `assets/characters/human_player.png` | 64x128 | 4 x 8 de 16x16 (jugador y los cuatro tipos de enemigo) |
 | `assets/characters/ninja_blue.png` | 64x112 | 4 x 7 de 16x16 (jugador, fallback) |
-| `assets/characters/{slime,owl,spider_red,lizard}.png` | 64x64 | 4 x 4 de 16x16 |
-| `assets/fx/slash.png` | 128x32 | 4 de 32x32 (arco del jugador) |
-| `assets/fx/claw.png` | 128x32 | 4 de 32x32 (zarpazo de los enemigos) |
+| `assets/fx/slash.png` | 128x32 | 4 de 32x32 (arco del jugador y de los enemigos) |
 | `assets/weapons/{blade,rock}.png` | 6x11 y 3x16 | sin rejilla |
 
 Dos cosas que no se deducen mirando los píxeles y que por eso están en
@@ -355,15 +353,19 @@ al mirar hacia abajo.
 - **fila fija**: la animación solo existe mirando al frente, como el golpe. Se dibuja
   siempre en su fila y se refleja en horizontal cuando el actor mira a un lado.
 
-Los enemigos del pack no traen fila de golpe propia, así que reutilizan la pose de
-frente, que es lo que dice `ActorVisualCatalog.attack_row_of`.
+Los enemigos no son un pack aparte: los cuatro tipos comparten la hoja de la
+persona (`ActorVisualCatalog._npc_human_definition()`), así que su golpe es ya la
+fila 5 con tres fotogramas, igual que el del jugador. Lo único que los separa en
+pantalla es el tinte de paleta (`ActorVisualCatalog.tint_of`, con los colores en
+`GameConfig.NPC_TINT_*`), porque una hoja compartida solo puede diferenciarse por
+el color.
 
 Cambiar el visual del jugador es cambiar `GameConfig.PLAYER_VISUAL` (el humano
 `player_human` por defecto, el ninja `player_ninja` como fallback). El catálogo
 resuelve el alias `PLAYER` a la definición activa; cada definición trae su hoja,
 sus filas y sus fotogramas. Los tipos de enemigo (`NpcKind`) viven en el dominio;
-el catálogo visual los traduce a hoja. La regla de capas manda sobre lo que
-resulte más cómodo.
+el catálogo visual los traduce a hoja y a tinte. La regla de capas manda sobre lo
+que resulte más cómodo.
 
 ## 10. Extender el mapa
 

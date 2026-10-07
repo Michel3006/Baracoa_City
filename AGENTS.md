@@ -21,7 +21,7 @@ de cosas de fuera (texturas y play-test) y la Fase 2.**
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 150/150 pruebas correctas
+# RESULTADO: 151/151 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
@@ -112,9 +112,9 @@ con casos que miran lo que el jugador ve y no lo que el código devuelve:
 
 - `npc_combat_runner` comprueba que ningún enemigo nace encajonado, y que al aparecer
   hay alguno dentro del rectángulo de la cámara y dentro de su radio de detección.
-- `test_actor_sprite` comprueba la rejilla de cada hoja, que el efecto de golpe de
-  las dos hojas (arco y zarpas) tiene cuatro fotogramas cuadrados en una sola fila,
-  y que el origen sale del centro del torso en las cuatro direcciones.
+- `test_actor_sprite` comprueba la rejilla de cada hoja, que el efecto de golpe
+  tiene cuatro fotogramas cuadrados en una sola fila, y que el origen sale del
+  centro del torso en las cuatro direcciones.
 
 **Regla que sale de esto:** una prueba que mira el valor que devuelve el código no
 comprueba que se vea. Para lo que el jugador ve hay que medir la pantalla.
@@ -128,8 +128,9 @@ en el feedback de golpe:
    filas y el arco recorría la de arriba, casi vacía: parpadeaba en blanco. Es un
    cuadrado de 32x32 y son cuatro fotogramas en una sola fila. No lo dijo ningún
    test: salió de casar la hoja con el `Preview.gif` del pack píxel a píxel
-   (coincidencia exacta). Las dos hojas de efecto, `slash.png` y `claw.png`, se
-   recortan igual.
+   (coincidencia exacta). La hoja de efecto es `slash.png`, y se recorta igual;
+   la de las zarpas (`claw.png`) se borró el día que los enemigos dejaron de ser
+   bestias.
 2. **El origen en los pies.** El efecto se anclaba en el origen del nodo, que en
    los personajes está en los pies. Un arco "delante del personaje" puesto desde
    los pies queda bajo el cuerpo al mirar hacia abajo y mal en transversal hacia
@@ -287,6 +288,52 @@ mucho que los píxeles parecieran contradecirse.
   Los que dependan del movimiento tienen que mirar solo los fotogramas en los que la
   posición cambia de verdad.
 
+### Los enemigos eran monstruos y no podían usar el golpe del jugador
+
+La fila de ataque de los enemigos quedó pendiente al cerrar Fase 1: sus hojas
+(64x64) solo traían filas de caminar, el golpe reutilizaba la pose de frente, la
+muerte era la pose quieta (los bichos mueren de pie) y hacerlo bien exigía cuatro
+hojas nuevas. Se resolvió sin pedir ninguna textura: los cuatro tipos pasaron a
+ser personas que usan `human_player.png` con la definición entera del jugador
+(`ActorVisualCatalog._npc_human_definition()`), y lo único que los distingue es el
+nombre (`NpcKind`: Vándalo, Atracador, Matón, Pandillero) y un tinte de paleta por
+tipo (`ActorVisualCatalog.tint_of`, con los cuatro colores en
+`GameConfig.NPC_TINT_*`).
+
+Al compartir hoja comparten de regalo el puñetazo de tres fotogramas con mano
+alternada, la caminata en las cuatro orientaciones y la muerte yacente: "los NPC
+tienen que poder hacer lo mismo que el jugador" salió de reutilizar su definición,
+no de duplicar animaciones. Se borraron `slime.png`, `owl.png`, `spider_red.png`,
+`lizard.png` y `claw.png`, y `SlashEffect.NPC_SHEET` dejó de existir: el arco del
+enemigo es ahora el del jugador.
+
+Dos cosas que las suites no cuentan y conviene saber:
+
+- **El tinte multiplica, no repinta.** `modulate` sobre la paleta real de la hoja
+  (negro de contorno, verde pálido de ropa, blanco de piel) solo puede oscurecer
+  canales que la hoja ya tiene: no hay azul posible en la ropa y el contorno sigue
+  siendo negro. Por eso los cuatro colores se eligieron **sobre esa paleta** y se
+  comprobaron contando píxeles en una captura, no razonándolos: con el jugador en
+  (192, 192) la imagen traía exactos los cuatro colores de ropa previstos
+  — (233,145,35), (82,158,146), (116,211,61) y (233,212,44) — más los cuatro de
+  piel teñida y los del jugador sin teñir.
+- **El color propio deja de mandar en cuanto hay un estado.** El reposo es el
+  tinte del tipo; encima manda `HURT_TINT` (rojo), `STUN_TINT` (violeta) y la
+  muerte (gris). De ahí que los cuatro colores sean naranja, azul, verde y
+  amarillo: ninguno se acerca al rojo ni al violeta, que significan otra cosa.
+
+**Reglas que salen de esto:**
+
+- **Cuando un encargo de textura sirve para parchear una hoja mala, mirar antes si
+  se puede reutilizar la hoja buena.** "Cinco filas por bicho" habría dado cuatro
+  hojas nuevas que mantener, y seguiría sin dar la muerte que sí tiene la persona.
+- **Una hoja compartida solo puede diferenciarse por el color**, y ese color tiene
+  que dejar libres los colores de estado. Un enemigo que se distingue por su
+  matiz no puede confundirse con el rojo de un golpe recibido.
+- **El recuento de píxeles de una captura es la comprobación del color propio.**
+  Un `modulate` no se ve en el test que compara `modulate == tint`: eso solo dice
+  que se aplicó, no qué sale dibujado.
+
 ## Qué falta, en orden
 
 Es la lista de trabajo real. No inventar alcance extra: la especificación ya
@@ -320,17 +367,19 @@ propio de aturdimiento (`STUN_TINT`, violeta, distinto del rojo de la
 invulnerabilidad, vía señal `stun_changed` de los cuerpos de combate) y muerte
 con texto ("CAIDO / E PARA REVIVIR" con `PixelFont`).
 
-Quedan dos, y los dos necesitan algo de fuera:
+Queda uno, y necesita jugar para ajustarlo:
 
-- **La fila de golpe lateral de los enemigos.** Los enemigos del pack no tienen
-  fila de ataque propia: reutilizan la pose de frente, así que al atacar de lado
-  el fotograma no encaja del todo. Está anotado en
-  `ActorVisualCatalog.attack_row_of`. Necesita texturas nuevas (hojas de ataque
-  de los cuatro tipos) — ver la respuesta al usuario. Si llegan, el recorte irá a
-  `GameConfig` como el resto.
 - **El enemigo fuerte mata a un jugador quieto en unos 15 s.** Dentro de lo
   razonable, pero no se ha ajustado jugando. Se ajusta con feedback real (basta
   un número en `GameConfig`).
+
+El otro que quedaba — **la fila de golpe lateral de los enemigos** — se cerró sin
+texturas nuevas: los cuatro tipos (`NpcKind`: Vándalo, Atracador, Matón,
+Pandillero) usan ahora la hoja de la persona (`human_player.png`) con un tinte de
+paleta por tipo, así que golpean, caminan y mueren igual que el jugador, y las
+hojas de los bichos y la de las zarpas se borraron. Detalle y comprobación en la
+lección "Los enemigos eran monstruos y no podían usar el golpe del jugador" (más
+arriba) y en `docs/assets/TEXTURAS.md` (§2.1).
 
 ### 3. Tests de lo que se añada
 
@@ -376,7 +425,7 @@ Tres casos de este cierre conviene recordarlos como patrón:
 ## Comandos
 
 ```bash
-# tests unitarios (150)
+# tests unitarios (151)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)

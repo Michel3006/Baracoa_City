@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ds5svim1a1esk"
-path="res://.godot/imported/spider_red.png-ca9978ab7dbb65afa364509864fc1110.ctex"
+uid="uid://bff84xidcqs5x"
+path="res://.godot/imported/sheet-pixelchar-01.png-12c59ad486acb009ff94637cc1f45785.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/characters/spider_red.png"
-dest_files=["res://.godot/imported/spider_red.png-ca9978ab7dbb65afa364509864fc1110.ctex"]
+source_file="res://docs/sheet-pixelchar-01.png"
+dest_files=["res://.godot/imported/sheet-pixelchar-01.png-12c59ad486acb009ff94637cc1f45785.ctex"]
 
 [params]
 

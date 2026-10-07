@@ -8,19 +8,16 @@ extends Node2D
 ## pegado. Por eso es un `Node2D` suelto y no un hijo del actor que golpea, así puede
 ## morir el actor sin que el efecto se borre a mitad.
 ##
-## Hay dos hojas, con la misma rejilla: la del jugador es la espada curva del pack
-## (`FX/Attack/SlashCurved`) y la de las criaturas es el zarpazo (`FX/Attack/Claw`).
-## La diferencia la pone quien llama a `spawn()`, no este script: aquí no se decide
-## quién tiene zarpazo y quién espada.
+## Hay una sola hoja, con cuatro fotogramas: la espada curva del pack
+## (`FX/Attack/SlashCurved`). Tanto el jugador como los enemigos son personas y
+## golpean con la misma animación, así que el arco también es el mismo; no hay hoja
+## de zarpas. Decidir si un golpe lleva arco o no es cosa de quien llama a `spawn()`,
+## no de este script.
 ##
 ## Dependencias: presentation -> infrastructure/configuration
 
-## Arco de espada: lo usa el jugador, con o sin arma en la mano.
+## Arco de espada: lo usa el jugador y los enemigos.
 const SHEET := "res://assets/fx/slash.png"
-## Zarpazo de bestia: lo usan los enemigos.
-const NPC_SHEET := "res://assets/fx/claw.png"
-
-var sheet_path: String = SHEET
 
 var _sprite: Sprite2D = null
 var _elapsed: float = 0.0
@@ -32,9 +29,9 @@ func _ready() -> void:
 	_sprite.name = "Frames"
 	_sprite.centered = true
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_sprite.texture = load(sheet_path) as Texture2D
+	_sprite.texture = load(SHEET) as Texture2D
 	if _sprite.texture == null:
-		GameLogger.warning("Falta el efecto de golpe (%s)" % sheet_path, "SlashEffect")
+		GameLogger.warning("Falta el efecto de golpe (%s)" % SHEET, "SlashEffect")
 		return
 	# La hoja es de 128x32 con el fotograma cuadrado de 32x32: cuatro en una fila.
 	# Con la rejilla equivocada (16x32) cada fotograma se parte por la mitad y la
@@ -84,21 +81,16 @@ func _process(delta: float) -> void:
 
 
 ## Crea un efecto en el mundo y lo orienta. Se suelta solo al terminar.
-##
-## `sheet_path` elige la hoja (`SHEET` para el arco de espada, `NPC_SHEET` para el
-## zarpazo); se fija antes de `add_child` porque es dentro de `_ready()` cuando se lee.
 static func spawn(
 	parent: Node,
 	direction: Vector2,
 	origin: Vector2,
-	z: int = 0,
-	sheet_path: String = SHEET
+	z: int = 0
 ) -> SlashEffect:
 	if parent == null or not is_instance_valid(parent):
 		return null
 	var effect := SlashEffect.new()
 	effect.z_index = z
-	effect.sheet_path = sheet_path
 	parent.add_child(effect)
 	effect.face(direction, origin)
 	return effect

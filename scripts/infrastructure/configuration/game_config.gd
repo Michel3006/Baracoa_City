@@ -218,6 +218,24 @@ const NPC_STRONG_RANGE := 15.0
 const NPC_STRONG_COOLDOWN := 1.2
 const NPC_STRONG_SPEED := 34.0
 const NPC_STRONG_DEFENSE := 2.0
+## Tinte propio de cada tipo de enemigo.
+##
+## Los cuatro enemigos son personas: la misma hoja que el jugador, la misma
+## animacion de golpe y la misma muerte. Lo que los distingue en pantalla, ademas
+## del nombre, es el color de la ropa, y ese color sale de multiplicar aqui el
+## `modulate` del cuerpo. El tinte es el de reposo: encima manda el rojo de la
+## invulnerabilidad, el violeta del aturdimiento y el gris de la muerte.
+##
+## Ninguno de los cuatro es el rojo de `HURT_TINT` ni el violeta de `STUN_TINT`:
+## un enemigo de color propio no puede confundirse con "acabo de recibir un golpe"
+## ni con "estoy aturdido". Se eligieron los cuatro sobre la paleta real de la
+## hoja (negro de contorno, verde palido de ropa, blanco de piel): el `modulate`
+## multiplica, así que nunca enciende un canal que la hoja no tiene y el contorno
+## sigue siendo negro.
+const NPC_TINT_VANDAL := Color("ff9a3d")
+const NPC_TINT_ROBBER := Color("5aa8ff")
+const NPC_TINT_BRUTE := Color("7fe06b")
+const NPC_TINT_GANGSTER := Color("ffe14d")
 
 # --- HUD (seccion 8) ---
 ## Tamano de las barras de vida y stamina, y margenes respecto a la pantalla.

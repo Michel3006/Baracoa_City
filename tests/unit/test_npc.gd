@@ -188,14 +188,14 @@ func _respawn(ctx: ScriptTestContext) -> void:
 ## Los tipos de enemigo no son rutas de archivo: si lo fueran, el dominio dependería
 ## de la capa de presentación.
 func _kinds_are_data(ctx: ScriptTestContext) -> void:
-	ctx.check(NpcKind.exists(NpcKind.SLIME), "el limo existe")
-	ctx.check(NpcKind.exists(NpcKind.LIZARD), "el lagarto existe")
+	ctx.check(NpcKind.exists(NpcKind.VANDAL), "el vándalo existe")
+	ctx.check(NpcKind.exists(NpcKind.GANGSTER), "el pandillero existe")
 	ctx.check(not NpcKind.exists(&"dragon"), "no hay dragones")
 	ctx.check_equal(
-		NpcKind.display_name(NpcKind.OWL), "Búho", "el búho tiene nombre"
+		NpcKind.display_name(NpcKind.BRUTE), "Matón", "el matón tiene nombre"
 	)
 	ctx.check(
-		NpcKind.display_name(&"lo-que-sea") == "Criatura",
+		NpcKind.display_name(&"lo-que-sea") == "Individuo",
 		"un tipo desconocido tiene nombre genérico"
 	)
 

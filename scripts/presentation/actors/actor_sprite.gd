@@ -82,9 +82,11 @@ func _ready() -> void:
 ## Carga la hoja y define los clips estandar de un actor que camina en cuatro
 ## direcciones.
 ##
-## `walk_row` es la fila de la orientación de abajo y `attack_row` la del golpe. Los
-## enemigos del pack no tienen fila de ataque propia y reutilizan la de abajo, así
-## que quien llama decide cuál de las dos filas usa cada cosa.
+## `walk_row` es la fila de la orientación de abajo y `attack_row` la del golpe; la
+## del golpe puede ser otra fila (una hoja con una tira de ataque aparte) o la misma
+## que la de abajo si la hoja no trae ataque dibujado. Es el camino clásico, sin
+## definición: los actores del catálogo pasan por `apply_definition()`, que lee lo
+## mismo pero hoja a hoja desde `ActorVisualCatalog`.
 func configure(
 	path: String,
 	walk_row: int = GameConfig.ACTOR_ROW_DOWN,
@@ -106,7 +108,8 @@ func configure(
 ## La definición decide filas, fotogramas y velocidad por personaje: el humano
 ## ataca en la fila 5 con tres fotogramas y muere en una pose fija de la fila 4,
 ## el ninja ataca en la 4 con cuatro y cae en la fila de la orientación. Los
-## enemigos del pack no tienen nada de esto; es la hoja la que obliga.
+## enemigos usan la definición del humano, así que comparten todo esto con el
+## jugador: la hoja es la que obliga, y aquí no se decide nada más.
 func apply_definition(def: CharacterVisualDefinition) -> bool:
 	if def == null or def.sheet.is_empty():
 		GameLogger.warning("Definición visual vacía", "ActorSprite")

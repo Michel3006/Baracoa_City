@@ -15,17 +15,20 @@ extends RefCounted
 const SHEETS := {
 	# El jugador activo es la persona (4x8: cuatro filas de caminar, salto/caída/
 	# muerte y golpe); el ninja se conserva como fallback y se sigue comprobando.
+	# Los enemigos no tienen hoja propia: usan la de la persona, y eso lo comprueba
+	# `_enemy_attack_row` en vez de repetir aquí la misma entrada.
 	"jugador": ["res://assets/characters/human_player.png", 4, 8],
 	"ninja": ["res://assets/characters/ninja_blue.png", 4, 7],
-	"limo": ["res://assets/characters/slime.png", 4, 4],
-	"buho": ["res://assets/characters/owl.png", 4, 4],
-	"arana": ["res://assets/characters/spider_red.png", 4, 4],
-	"lagarto": ["res://assets/characters/lizard.png", 4, 4],
 	# La hoja del efecto mide 128x32, que en celdas de 16 px son 8x2. Ojo: esa no es
 	# su rejilla de dibujo (son cuatro fotogramas de 32x32, que lo comprueba
 	# `_fx_grid`), aquí solo se fija que el archivo siga midiendo lo que mide.
 	"golpe": ["res://assets/fx/slash.png", 8, 2],
 }
+
+## Los cuatro tipos de enemigo, que comparten hoja y definición con la persona.
+const NPC_KINDS: Array[StringName] = [
+	NpcKind.VANDAL, NpcKind.ROBBER, NpcKind.BRUTE, NpcKind.GANGSTER,
+]
 
 ## Fotograma de física con el que se avanza el tiempo en las pruebas de animación.
 ## Se usa uno real y no un múltiplo exacto de la duración de un fotograma, porque en
@@ -92,7 +95,8 @@ func register() -> Array:
 		["el golpe no se repite y para en el último", _attack_stops_at_end],
 		["repetir la misma animación no la reinicia", _replay_is_noop],
 		["un clip desconocido no cambia nada", _unknown_clip],
-		["un enemigo usa su propia fila de golpe", _enemy_attack_row],
+		["un enemigo golpea con la misma fila que el jugador", _enemy_attack_row],
+		["cada tipo de enemigo lleva su tinte de paleta", _enemy_tints],
 		["el efecto de golpe es una fila de cuatro, y ninguno vacío", _fx_grid],
 		["el arco dura lo que dura el golpe", _fx_duration],
 		["el arco se ancla en el torso y sale por delante", _fx_origin],
@@ -443,23 +447,66 @@ func _unknown_clip(ctx: ScriptTestContext) -> void:
 	)
 
 
-## Los enemigos del pack traen solo las cuatro filas de caminar. Para ellos el golpe
-## reutiliza la pose de frente, y hay que comprobar que no se salen de la hoja.
+## Los enemigos son personas: los cuatro tipos comparten hoja, definición y fila de
+## ataque con el jugador, y su golpe no cambia de fila con la orientación.
+##
+## Este caso existía para los bichos del pack, que no traían fila de ataque y
+## golpeaban con la pose de frente de su propia hoja. Hoy lo que hay que vigilar es
+## lo contrario: que nadie deje a un tipo con la hoja vieja, con una hoja inventada
+## o con una fila de ataque distinta de la de la persona.
 func _enemy_attack_row(ctx: ScriptTestContext) -> void:
-	for kind: StringName in [
-		NpcKind.SLIME, NpcKind.OWL, NpcKind.SPIDER, NpcKind.LIZARD
-	]:
+	var human := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_HUMAN)
+	if not ctx.check(human != null, "la persona tiene definición"):
+		return
+	for kind: StringName in NPC_KINDS:
 		var sprite := _prepared(kind)
 		if not _context_has_texture(sprite, kind, ctx):
 			continue
 		ctx.check_equal(
-			ActorVisualCatalog.attack_row_of(kind),
-			GameConfig.ACTOR_ROW_DOWN,
-			"el enemigo %s golpea con la pose de frente" % kind
+			ActorVisualCatalog.sheet_of(kind), human.sheet,
+			"el enemigo %s usa la hoja de la persona" % kind
+		)
+		ctx.check_equal(
+			ActorVisualCatalog.attack_row_of(kind), human.attack_row,
+			"el enemigo %s golpea con la fila de ataque de la persona" % kind
 		)
 		sprite.play(ActorSprite.ATTACK, true)
-		ctx.check_equal(_row(sprite), GameConfig.ACTOR_ROW_DOWN, "y sale de su hoja")
-		ctx.check_equal(sprite.flip_h, false, "mirando al frente no se refleja")
+		var row := _row(sprite)
+		for facing: Vector2 in [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]:
+			sprite.set_facing(facing)
+			ctx.check_equal(
+				_row(sprite), row,
+				"el golpe de %s no cambia de fila mirando a %s" % [kind, facing]
+			)
+		ctx.check_equal(row, human.attack_row, "y esa fila es la de la persona")
+
+
+## Los cuatro tipos comparten hoja, así que el color de la ropa es lo único que en
+## pantalla dice quién es quién. Tiene que haber un color por tipo y ningún color
+## que se confunda con un estado: un enemigo en reposo no puede parecer herido
+## (rojo de la invulnerabilidad) ni aturdido (violeta).
+func _enemy_tints(ctx: ScriptTestContext) -> void:
+	var seen: Dictionary = {}
+	for kind: StringName in NPC_KINDS:
+		var tint := ActorVisualCatalog.tint_of(kind)
+		seen[tint] = true
+		ctx.check(
+			not tint.is_equal_approx(Color.WHITE), "el %s tiene color propio" % kind
+		)
+		ctx.check(
+			not tint.is_equal_approx(GameConfig.HURT_TINT)
+			and not tint.is_equal_approx(GameConfig.STUN_TINT),
+			"el tinte del %s no se confunde con el daño ni con el aturdimiento" % kind
+		)
+	ctx.check_equal(seen.size(), NPC_KINDS.size(), "los cuatro tintes son distintos")
+	ctx.check_equal(
+		ActorVisualCatalog.tint_of(&"dragon"), Color.WHITE,
+		"un actor desconocido no se tiñe"
+	)
+	ctx.check_equal(
+		ActorVisualCatalog.tint_of(ActorVisualCatalog.PLAYER), Color.WHITE,
+		"el jugador va con su hoja y sin tinte"
+	)
 
 
 ## Cualquier combinación de clip, orientación y tiempo tiene que dejar el fotograma
@@ -521,11 +568,11 @@ func range_array(last: int) -> Array[int]:
 ## comprobación fuerte es que ningún fotograma quede vacío: con la rejilla equivocada
 ## la mitad de los fotogramas no tienen ni un píxel.
 ##
-## Se miden las dos hojas (espada del jugador y zarpazo de los enemigos): son del
-## mismo pack y hoy comparten rejilla, pero nada obliga a que cambien juntas.
+## Se mide la hoja del arco, que es la misma para el jugador y para los enemigos:
+## los dos son personas y golpean con lo mismo. Si algún día vuelve a haber una
+## hoja por bando, aquí se añade.
 func _fx_grid(ctx: ScriptTestContext) -> void:
 	_fx_sheet_grid(ctx, SlashEffect.SHEET)
-	_fx_sheet_grid(ctx, SlashEffect.NPC_SHEET)
 
 
 func _fx_sheet_grid(ctx: ScriptTestContext, path: String) -> void:
@@ -613,55 +660,55 @@ func _fx_origin(ctx: ScriptTestContext) -> void:
 	var body := load(body_path) as Texture2D
 	if not ctx.check(body != null, "falta la hoja del jugador para medir el cuerpo"):
 		return
-	for path: String in [SlashEffect.SHEET, SlashEffect.NPC_SHEET]:
-		var sheet := load(path) as Texture2D
-		if not ctx.check(sheet != null, "falta la hoja del efecto (%s)" % path):
+	var path: String = SlashEffect.SHEET
+	var sheet := load(path) as Texture2D
+	if not ctx.check(sheet != null, "falta la hoja del efecto (%s)" % path):
+		return
+	var frames := _fx_cells(sheet)
+	for label: String in FX_DIRECTIONS:
+		var direction: Vector2 = FX_DIRECTIONS[label]
+		var silhouette := _fx_body_cells(body, direction)
+		# Los pies en el origen, que es como vive el actor en el mundo.
+		var origin := SlashEffect.origin_for(Vector2.ZERO, direction)
+		var arc: Array[Vector2i] = []
+		for cells: Array in frames:
+			for point: Vector2i in cells:
+				arc.append(
+					_fx_rotate(point, direction)
+					+ Vector2i(roundi(origin.x), roundi(origin.y))
+				)
+		if not ctx.check(
+			arc.size() > 0 and silhouette.size() > 0,
+			"%s: no hay píxeles que medir en %s" % [path, label]
+		):
 			continue
-		var frames := _fx_cells(sheet)
-		for label: String in FX_DIRECTIONS:
-			var direction: Vector2 = FX_DIRECTIONS[label]
-			var silhouette := _fx_body_cells(body, direction)
-			# Los pies en el origen, que es como vive el actor en el mundo.
-			var origin := SlashEffect.origin_for(Vector2.ZERO, direction)
-			var arc: Array[Vector2i] = []
-			for cells: Array in frames:
-				for point: Vector2i in cells:
-					arc.append(
-						_fx_rotate(point, direction)
-						+ Vector2i(roundi(origin.x), roundi(origin.y))
-					)
-			if not ctx.check(
-				arc.size() > 0 and silhouette.size() > 0,
-				"%s: no hay píxeles que medir en %s" % [path, label]
-			):
-				continue
-			var axis := Vector2i(roundi(direction.x), roundi(direction.y))
-			var cross := Vector2i(-axis.y, axis.x)
-			var body_span := _fx_span(silhouette, axis)
-			var arc_span := _fx_span(arc, axis)
-			var body_cross := _fx_span(silhouette, cross)
-			var arc_cross := _fx_span(arc, cross)
+		var axis := Vector2i(roundi(direction.x), roundi(direction.y))
+		var cross := Vector2i(-axis.y, axis.x)
+		var body_span := _fx_span(silhouette, axis)
+		var arc_span := _fx_span(arc, axis)
+		var body_cross := _fx_span(silhouette, cross)
+		var arc_cross := _fx_span(arc, cross)
 
-			ctx.check(
-				arc_span[1] >= body_span[1] + 8,
-				"%s mirando a %s: el arco acaba en %d y el cuerpo en %d, y tiene que " % [
-					path.get_file(), label, arc_span[1], body_span[1]
-				] + "llegar 8 px más allá del cuerpo"
-			)
-			ctx.check(
-				arc_span[0] >= body_span[0] - 2,
-				"%s mirando a %s: el arco se cuela %d px por detrás del cuerpo" % [
-					path.get_file(), label, body_span[0] - arc_span[0]
-				]
-			)
-			var arc_mid := float(arc_cross[0] + arc_cross[1]) / 2.0
-			var body_mid := float(body_cross[0] + body_cross[1]) / 2.0
-			ctx.check(
-				absf(arc_mid - body_mid) <= 5.0,
-				"%s mirando a %s: el arco va desplazado %.1f px del centro del cuerpo" % [
-					path.get_file(), label, arc_mid - body_mid
-				]
-			)
+		ctx.check(
+			arc_span[1] >= body_span[1] + 8,
+			"%s mirando a %s: el arco acaba en %d y el cuerpo en %d, y tiene que " % [
+				path.get_file(), label, arc_span[1], body_span[1]
+			] + "llegar 8 px más allá del cuerpo"
+		)
+		ctx.check(
+			arc_span[0] >= body_span[0] - 2,
+			"%s mirando a %s: el arco se cuela %d px por detrás del cuerpo" % [
+				path.get_file(), label, body_span[0] - arc_span[0]
+			]
+		)
+		var arc_mid := float(arc_cross[0] + arc_cross[1]) / 2.0
+		var body_mid := float(body_cross[0] + body_cross[1]) / 2.0
+		ctx.check(
+			absf(arc_mid - body_mid) <= 5.0,
+			"%s mirando a %s: el arco va desplazado %.1f px del centro del cuerpo" % [
+				path.get_file(), label, arc_mid - body_mid
+			]
+		)
 
 
 ## Píxeles de cada fotograma de la hoja, centrados en su propio fotograma: así los
