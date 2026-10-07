@@ -55,6 +55,7 @@ func _run() -> void:
 	await _check("el estado ATTACKING dura la recuperación", _attacking_state_lasts_the_recovery)
 	await _check("al reaparecer el jugador sigue llevando el arma", _weapon_survives_death)
 	await _check("con la zona despejada nada se ata al jugador", _nothing_blocks_the_player)
+	await _check("a puños el cuerpo usa el brazo dibujado", _unarmed_punch_uses_punch_arm)
 	await _check("la barra de golpe sigue el cooldown", _attack_bar_follows_the_cooldown)
 
 	_report()
@@ -951,6 +952,48 @@ func _attack_bar_follows_the_cooldown() -> void:
 		hud.attack_ready() >= 0.99,
 		"pasado el cooldown la barra vuelve a la llena y se ha quedado en %.2f" % hud.attack_ready()
 	)
+
+
+## A puños, el cuerpo queda en IDLE y el brazo dibujado está activo
+##
+## Con arma se usa el clip ATTACK; a puños no se dibuja el clip de ataque del
+## cuerpo (es de perfil) y el brazo por código está activo.
+func _unarmed_punch_uses_punch_arm() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	var punch := player.get_node_or_null("PunchArm") as Node
+	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
+		return
+	_context.check(punch != null, "el jugador no tiene PunchArm")
+
+	# Sin arma: golpe a puños - limpiar cooldown
+	var combat: MeleeCombat = _game().session.combat
+	if combat != null:
+		combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+		_game().session.player.restore_stamina(float(GameConfig.PLAYER_MAX_STAMINA))
+	await _settle(2)
+
+	Input.action_press(&"attack_unarmed", 1.0)
+	await _settle(2)
+	Input.action_release(&"attack_unarmed")
+
+	await _settle(4)
+	if _context.check(player.is_swinging(), "no hay swing a puños"):
+		var clip := actor.current_clip()
+		_context.check(
+			clip == ActorSprite.IDLE or clip == ActorSprite.WALK,
+			"a puños el cuerpo queda en IDLE/WALK y está en %s" % str(clip)
+		)
+		var is_active := false
+		if punch.has_method("is_active"):
+			is_active = punch.call("is_active")
+		elif punch.get("active") != null:
+			is_active = punch.active
+		_context.check(is_active, "el brazo a puños debe estar activo durante el swing")
+
+	await _settle(int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 6)
 
 
 func _names(nodes: Array) -> String:

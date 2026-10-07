@@ -56,6 +56,39 @@ var walk_fps: float = GameConfig.ACTOR_WALK_FPS
 var attack_row: int = 0
 var attack_frames: int = GameConfig.ACTOR_ATTACK_FRAMES
 var attack_fps: float = GameConfig.ACTOR_ATTACK_FPS
+## Punto del que arranca el brazo del puñetazo: los dos guantes de la pose
+## quieta, en coordenadas del nodo (los pies en el origen) y en el cuadro sin
+## reflejar.
+##
+## Es lo que necesita `PunchArm` para dibujar el brazo: el brazo arranca en el
+## guante para taparlo, así que si estos valores no coinciden con lo que la hoja
+## tiene dibujado asoman píxeles de guante por debajo. Medidos píxel a píxel sobre
+## cada hoja: el humano los tiene en (-2, -6) y (1, -6) — las dos manchas blancas
+## de la cintura — y el ninja en (-6, -5) y (4, -5), que son sus manos azules a
+## los costados.
+var guard_hands: Array[Vector2] = [Vector2(-2.0, -6.0), Vector2(1.0, -6.0)]
+## Cabeza del cuadro, en coordenadas del nodo: la región que el cuerpo dibuja en
+## las filas de arriba.
+##
+## Sirve para que el brazo del puñetazo se esconda detrás de la cabeza cuando el
+## golpe va hacia arriba, que es hacia donde la cámara no ve: en esa orientación
+## el brazo se aleja de la cámara y la cabeza tapa lo que pasa por detrás, igual
+## que taparía el arma. Solo se recorta el brazo si el golpe va hacia arriba; en
+## las otras tres orientaciones va hacia la cámara o de lado y se dibuja encima.
+## Medido: la cabeza del humano ocupa y = -16..-10 (el pelo, que es negro) y la
+## del ninja y = -14..-8. Ocupa el ancho del cuadro entero, que es lo único que
+## el recorte usa.
+var head_rect: Rect2 = Rect2(-8.0, -16.0, 16.0, 7.0)
+## Paleta del brazo dibujado del puñetazo: brazo, puño y contorno.
+##
+## Salen de la propia hoja, porque el brazo se dibuja encima del cuerpo y tiene
+## que confundirse con lo que la hoja ya pinta. El humano tiene la piel pálida
+## (233, 240, 146) y los guantes blancos; el ninja tiene los brazos azules de la
+## armadura (121, 184, 206), las manos en verde apagado (95, 113, 96) y el
+## contorno casi negro (20, 27, 27).
+var punch_skin: Color = Color("e9f092")
+var punch_glove: Color = Color.WHITE
+var punch_outline: Color = Color.BLACK
 ## Fila y columna del frame de DEAD, y si la muerte respeta la orientación.
 ##
 ## El ninja no tiene muerte dibujada: cae en la pose quieta de la fila en la que

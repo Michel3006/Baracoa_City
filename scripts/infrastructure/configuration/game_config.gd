@@ -160,6 +160,47 @@ const FX_ORIGIN_OFFSET := 14.0
 ## Z del efecto de golpe: por encima del mundo y del NPC, por debajo del HUD.
 const FX_Z_INDEX := 8
 
+## Golpe a puños: el brazo y el puño se dibujan por código sobre la pose
+## direccional del cuerpo (`PunchArm`).
+##
+## Por qué existe: la fila de ataque de la hoja del humano es un puñetazo de
+## perfil dibujado hacia la derecha, así que al golpear mirando abajo o arriba el
+## cuerpo se giraba a perfil y el puño salía hacia los lados mientras la hitbox
+## iba al frente. A puños el cuerpo se queda en su pose de la orientación y el
+## brazo sale hacia donde se mira, con las dos manos alternadas (jab y cruz).
+##
+## Las fases son fracciones de `ATTACK_RECOVERY` (0.22 s ≈ 13 fotogramas de
+## física) y reparten los fotogramas así: guardia 1, carga 2, extensión 3,
+## impacto sostenido 3 y retorno 4. El orden es el de un puñetazo real.
+##
+## La extensión termina en `PUNCH_THRUST_END` = 0.45, antes de que cierre la
+## ventana de hitbox (0.3 s de cooldown sin arma x 0.35 de `HITBOX_ACTIVE_RATIO`
+## sobre 0.22 s = 0.477): el puño está salido cuando se registra el golpe, nunca
+## al revés.
+const PUNCH_GUARD_END := 0.08
+const PUNCH_WINDUP_END := 0.22
+const PUNCH_THRUST_END := 0.45
+const PUNCH_IMPACT_END := 0.68
+## Alcance visual del puño, en píxeles, medido desde el centro del torso en la
+## dirección del golpe. Es la misma referencia que usa el arco
+## (`FX_ORIGIN_OFFSET`, que sale del centro del torso) y el mismo número que
+## `WEAPON_UNARMED_RANGE`: la punta del puño llega hasta donde llegan los puños.
+##
+## Como el centro del torso está 8 px sobre los pies, la fórmula reparte lo que
+## toca en cada orientación sin que nadie lo decida a mano: 12 px por arriba (el
+## puño acaba por encima de la cabeza, que llega hasta y = -16), 4 px por abajo
+## (por debajo de los pies) y 12 px a los lados. Medido contra el sprite.
+const PUNCH_REACH := 12.0
+## Ancho de la banda del brazo y lado del puño, en píxeles. Los dos valen 4
+## porque la hoja dibuja los guantes de 3 px: un brazo más estrecho deja ver el
+## guante de la pose quieta por debajo.
+const PUNCH_LIMB_WIDTH := 4.0
+const PUNCH_FIST_SIZE := 4.0
+## Avance del cuerpo durante la extensión y el impacto, en píxeles. Un paso de
+## plantón al pegar: solo en esas dos fases, para que el retroceso del retorno
+## también se note.
+const PUNCH_BODY_SHIFT := 1.0
+
 # --- NPC (seccion 18) ---
 ## Interruptor de enemigos. En `false` el juego arranca con la zona despejada: no se
 ## crea el director, ni los agentes, ni sus cuerpos en pantalla.

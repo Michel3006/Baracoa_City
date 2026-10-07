@@ -25,8 +25,12 @@ Las acciones de entrada están declaradas en `project.godot` con nombres estable
 
 Las dos formas de golpear son independientes a propósito. Se puede pegar a puños
 con algo en la mano: el golpe desarmado **no des-equipa** el arma, usa su propio
-alcance, daño, cooldown y stamina, y no gasta durabilidad. Lo único que cambia al
-mirar la pantalla es que a puños no se dibuja ni el arma ni el arco del golpe.
+alcance, daño, cooldown y stamina, y no gasta durabilidad. A puños el cuerpo se
+queda en su pose direccional (IDLE/WALK) mientras el brazo y el puño se dibujan
+por código hacia donde mira el personaje, con las dos manos alternadas. No se
+reproduce el clip de ataque de la hoja (ese clip es un puñetazo de perfil y no
+sirve para las cuatro orientaciones). El golpe con arma sigue usando el clip de
+ataque de la hoja y el arco de golpe.
 
 ## 2. Movimiento
 

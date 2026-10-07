@@ -143,6 +143,17 @@ static func _human_definition() -> CharacterVisualDefinition:
 	def.dead_row = 4
 	def.dead_column = 2
 	def.dead_directional = false
+	# Guantes de la pose quieta, medidos píxel a píxel sobre la hoja: en la fila
+	# de frente (y en la de espaldas) hay dos manchas blancas de 3 px en x = -3..-1
+	# y x = 0..2, a la altura de y = -7..-5. `PunchArm` dibuja el brazo del
+	# puñetazo a partir de esos centros para tapar el guante que deja libre.
+	# Su cabeza (el pelo, que es negro) ocupa y = -16..-10 y el ancho del cuadro:
+	# es la región que tapa el brazo cuando el golpe va hacia arriba.
+	def.guard_hands = [Vector2(-2.0, -6.0), Vector2(1.0, -6.0)]
+	def.head_rect = Rect2(-8.0, -16.0, 16.0, 7.0)
+	def.punch_skin = Color("e9f092")
+	def.punch_glove = Color.WHITE
+	def.punch_outline = Color.BLACK
 	return def
 
 
@@ -168,6 +179,15 @@ static func _ninja_definition() -> CharacterVisualDefinition:
 	def.dead_row = GameConfig.ACTOR_ROW_DOWN
 	def.dead_column = 0
 	def.dead_directional = true
+	# Guantes —es decir, manos— de la pose quieta, medidos píxel a píxel sobre la
+	# hoja: sus brazos azules quedan a los costados y las manos (verde apagado) en
+	# x = -6..-5 y x = 5, a la altura de y = -6..-4. Su cabeza ocupa y = -14..-8 y
+	# ocupa el ancho del cuadro, que es lo único que el recorte del brazo usa.
+	def.guard_hands = [Vector2(-6.0, -5.0), Vector2(4.0, -5.0)]
+	def.head_rect = Rect2(-8.0, -14.0, 16.0, 7.0)
+	def.punch_skin = Color("79b8ce")
+	def.punch_glove = Color("5f7160")
+	def.punch_outline = Color("141b1b")
 	return def
 
 

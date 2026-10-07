@@ -69,6 +69,7 @@ var _is_dead: bool = false
 var _weapon_texture: Texture2D = null
 var _weapon_sprite: Sprite2D = null
 var _actor: ActorSprite = null
+var _punch: PunchArm = null
 ## Golpe a puños o con arma: decide si la mano lleva algo.
 var _is_unarmed: bool = true
 ## Si hay un arma con textura en la mano. Va aparte de `visible` porque la muerte
@@ -115,6 +116,7 @@ func _build_actor() -> void:
 	add_child(_actor)
 	if not ActorVisualCatalog.apply_to(ActorVisualCatalog.PLAYER, _actor):
 		GameLogger.warning("El jugador se queda sin sprite", "PlayerView")
+	_build_punch()
 
 
 func _build_hitbox() -> void:
@@ -122,6 +124,17 @@ func _build_hitbox() -> void:
 	hitbox.name = "Hitbox"
 	add_child(hitbox)
 	hitbox.exclude_body(self)
+
+
+func _build_punch() -> void:
+	_punch = PunchArm.new()
+	_punch.name = "PunchArm"
+	_punch.z_index = 1
+	add_child(_punch)
+	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
+	if def != null:
+		_punch.configure(def)
+	_punch.end()
 
 
 ## Aplica el desplazamiento resuelto por la física.
@@ -169,8 +182,15 @@ func begin_attack(weapon: Weapon = null) -> void:
 	if hitbox != null:
 		hitbox.face(_facing)
 		hitbox.set_active(true)
-	if _actor != null:
-		_actor.play(ActorSprite.ATTACK, true)
+	if _is_unarmed:
+		if _punch != null:
+			_punch.begin(_facing)
+		# A puños no reproducimos el clip de ataque del cuerpo (ese clip es de perfil)
+		if _actor != null and _actor.current_clip() == ActorSprite.ATTACK:
+			_actor.play(ActorSprite.IDLE, true)
+	else:
+		if _actor != null:
+			_actor.play(ActorSprite.ATTACK, true)
 	_refresh_animation()
 
 
@@ -190,6 +210,8 @@ func stop_hitbox() -> void:
 func end_attack() -> void:
 	_swing = -1.0
 	stop_hitbox()
+	if _punch != null:
+		_punch.end()
 	_refresh_animation()
 
 
@@ -256,6 +278,8 @@ func set_dead(active: bool) -> void:
 	if active:
 		if hitbox != null:
 			stop_hitbox()
+		if _punch != null:
+			_punch.end()
 		if _actor != null:
 			_actor.play(ActorSprite.DEAD, true)
 	_refresh_weapon_visibility()
@@ -314,6 +338,7 @@ func _physics_process(delta: float) -> void:
 	# a la posición y a la inclinación nuevas: por eso al parar el personaje parecía
 	# volverse de lado.
 	_place_weapon()
+	_refresh_punch()
 
 
 ## Elige la animación que toca: la muerte no cede, y el golpe manda sobre el
@@ -325,6 +350,13 @@ func _refresh_animation() -> void:
 		_actor.play(ActorSprite.DEAD)
 		return
 	if _swing >= 0.0:
+		# A puños el cuerpo queda en IDLE direccional (el brazo se dibuja por código)
+		if _is_unarmed:
+			if _is_walking:
+				_actor.play(ActorSprite.WALK)
+			else:
+				_actor.play(ActorSprite.IDLE)
+			return
 		# El clip del golpe lo arranca `begin_attack()` y aquí no se vuelve a pedir. El
 		# clip no se repite, así que al terminar `_playing` queda en falso y `play()`
 		# lo empezaría de cero: el golpe daba un tirón al final cada vez que el jugador
@@ -343,6 +375,20 @@ func _refresh_animation() -> void:
 ##
 ## Sin arma no se dibuja nada: es la diferencia visible entre el golpe a puños y el
 ## golpe con arma.
+func _refresh_punch() -> void:
+	if _punch == null:
+		return
+	if _swing >= 0.0 and _is_unarmed:
+		var r := _swing_ratio()
+		_punch.update(r, _facing)
+		_punch.position = _punch.body_shift() + GameConfig.ACTOR_SPRITE_OFFSET
+		if not _punch.is_active():
+			_punch.begin(_facing)
+	else:
+		if _punch.is_active():
+			_punch.end()
+
+
 func _place_weapon() -> void:
 	var sprite := _weapon_sprite
 	if sprite == null or not sprite.visible or _weapon_texture == null:
