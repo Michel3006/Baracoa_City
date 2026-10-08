@@ -144,6 +144,14 @@ func end_attack() -> void:
 	_refresh_animation()
 
 
+## Centro del torso del actor dibujado, para situar el arco de golpe. Sale de la
+## definición visual del tipo: el Hormelz tiene el torso en -14 (26 px de alto).
+func torso_offset() -> Vector2:
+	if _actor != null:
+		return _actor.torso_offset()
+	return GameConfig.ACTOR_SPRITE_OFFSET
+
+
 ## Tinte de daño recibido: mientras dura la invulnerabilidad el cuerpo entero se
 ## tiñe (la misma ley que el jugador). Lo enciende el presentador al recibir
 ## `invulnerability_changed`, y la muerte tiene su propio tinte más apagado.

@@ -19,18 +19,25 @@ extends Sprite2D
 ## ordenarlas distinto, y entonces la definición visual decide cada fila. Los
 ## fotogramas de una animación concreta son las **columnas**.
 ##
-## ## Dos tipos de clip
+## ## Tres tipos de clip
 ##
 ## - `directional`: la fila sale de la orientación, así que el mismo clip se ve
 ##   mirando a las cuatro direcciones. Es lo que usa caminar.
 ## - fila fija: la animación solo existe mirando al frente, como el golpe. Se dibuja
 ##   siempre en su fila y se refleja en horizontal cuando el actor mira a un lado.
+## - hoja por orientación (`sheets`): la definición trae un ARCHIVO distinto por
+##   dirección con el arte ya dibujado para ella (sin espejos) y una línea de planta
+##   por dirección. Entonces no hay filas que recortar: el fotograma es la celda
+##   lineal de la hoja, el espejo nunca se usa y el desplazamiento vertical sale de
+##   los pies del clip para que la línea de planta toque el origen del nodo. Así
+##   funciona el pack Hormelz (`HormelzVisualData`).
 ##
 ## ## El pie del actor
 ##
 ## El origen del nodo está en los pies, no en el centro del cuadro: los cuerpos se
 ## dibujan hacia arriba desde ahí. Por eso el sprite va desplazado hacia arriba lo
-## que mide medio cuadro (`GameConfig.ACTOR_SPRITE_OFFSET`).
+## que mide medio cuadro (`GameConfig.ACTOR_SPRITE_OFFSET` en la rejilla clásica, o
+## medio alto de celda menos la línea de planta en una hoja por orientación).
 ##
 ## Dependencias: presentation, infrastructure/configuration
 
@@ -51,6 +58,13 @@ const KNOWN_CLIPS: Array[StringName] = [WALK, IDLE, ATTACK, DEAD]
 var sheet_path: String = ""
 ## Clips definidos para esta hoja. Lo rellena `configure()`.
 var clips: Dictionary = {}
+
+## Lado de la celda actual: ancho y alto, porque las hojas horneadas no son
+## cuadradas (42x44) y la rejilla clásica sí (16x16).
+var _frame_width: int = GameConfig.ACTOR_FRAME_SIZE
+var _frame_height: int = GameConfig.ACTOR_FRAME_SIZE
+## Centro del torso que fija la definición aplicada (o el de la hoja clásica).
+var _torso: Vector2 = GameConfig.ACTOR_SPRITE_OFFSET
 
 var _clip: StringName = &""
 var _elapsed: float = 0.0
@@ -98,7 +112,9 @@ func configure(
 		GameLogger.warning("No se pudo cargar la hoja %s" % path, "ActorSprite")
 		return
 	texture = sheet
-	_apply_grid(sheet, GameConfig.ACTOR_FRAME_SIZE)
+	_frame_width = GameConfig.ACTOR_FRAME_SIZE
+	_frame_height = GameConfig.ACTOR_FRAME_SIZE
+	_apply_grid(sheet, _frame_width, _frame_height)
 	define_defaults(walk_row, attack_row)
 
 
@@ -120,7 +136,9 @@ func apply_definition(def: CharacterVisualDefinition) -> bool:
 		GameLogger.warning("No se pudo cargar la hoja %s" % def.sheet, "ActorSprite")
 		return false
 	texture = sheet
-	_apply_grid(sheet, def.frame_size)
+	_frame_width = def.frame_size
+	_frame_height = def.cell_height()
+	_apply_grid(sheet, _frame_width, _frame_height)
 	_row_down = def.walk_row
 	_row_side = def.row_side
 	_row_up = def.row_up
@@ -128,49 +146,89 @@ func apply_definition(def: CharacterVisualDefinition) -> bool:
 	_mirror_side = def.mirror_side
 	_alternate_attack = def.alternate_attack
 	_attack_parity = false
-	clips = {
-		WALK: {
-			"row": def.walk_row,
-			"frames": def.walk_frames,
-			"fps": def.walk_fps,
-			"loop": true,
-			"directional": true,
-		},
-		IDLE: {
-			"row": def.walk_row,
-			"frames": 1,
-			"fps": 1.0,
-			"loop": true,
-			"directional": true,
-		},
-		ATTACK: {
-			"row": def.attack_row,
-			"frames": def.attack_frames,
-			"fps": def.attack_fps,
-			"loop": false,
-			"directional": false,
-		},
-		DEAD: {
-			"row": def.dead_row,
-			"column": def.dead_column,
-			"frames": 1,
-			"fps": 1.0,
-			"loop": true,
-			"directional": def.dead_directional,
-		},
-	}
+	_torso = def.torso_offset
+	if def.sheet_clips.is_empty():
+		# Rejilla clásica: filas y columnas del recorte de siempre.
+		offset = GameConfig.ACTOR_SPRITE_OFFSET
+		clips = {
+			WALK: {
+				"row": def.walk_row,
+				"frames": def.walk_frames,
+				"fps": def.walk_fps,
+				"loop": true,
+				"directional": true,
+			},
+			IDLE: {
+				"row": def.walk_row,
+				"frames": 1,
+				"fps": 1.0,
+				"loop": true,
+				"directional": true,
+			},
+			ATTACK: {
+				"row": def.attack_row,
+				"frames": def.attack_frames,
+				"fps": def.attack_fps,
+				"loop": false,
+				"directional": false,
+			},
+			DEAD: {
+				"row": def.dead_row,
+				"column": def.dead_column,
+				"frames": 1,
+				"fps": 1.0,
+				"loop": true,
+				"directional": def.dead_directional,
+			},
+		}
+		_refresh()
+		return true
+	# Hoja por orientación: cada clip trae sus cuatro archivos, sus fotogramas
+	# y su línea de planta. La definición sigue poniendo el resto de datos
+	# (fila del golpe, muerte) por si algo los consulta, pero el dibujo de
+	# estos clips no pasa por filas.
+	clips = def.sheet_clips.duplicate(true)
+	# Estado inicial: el clip de reposo de la orientación con la que arranca el
+	# actor (abajo), que es además la hoja representativa de la definición.
+	var initial := clips.get(IDLE, clips.get(ATTACK, {})) as Dictionary
+	if not initial.is_empty():
+		_sync_sheet(initial)
 	_refresh()
 	return true
 
 
+## ¿Este nombre de clip se puede reproducir en la hoja actual?
+##
+## Los clips de hoja por orientación amplían el vocabulario más allá de los
+## cuatro estándar (`KNOWN_CLIPS`), y quien lanza un ataque quiere saber si su
+## animación existe antes de pedirla.
+func has_clip(name: StringName) -> bool:
+	return clips.has(name)
+
+
+## Centro del torso de esta definición, en coordenadas del nodo. Lo usan los
+## presentadores para situar el arco de golpe a la altura del hombro del actor
+## que se dibuja de verdad, no de una hoja genérica.
+func torso_offset() -> Vector2:
+	return _torso
+
+
 ## Recorta la hoja en una rejilla de cuadros del tamaño que diga la hoja.
 ## Los personajes del pack usan `GameConfig.ACTOR_FRAME_SIZE`; una hoja futura
-## (personas reales) puede traer otra rejilla y la trae en su definición.
-func _apply_grid(sheet: Texture2D, frame_size: int = GameConfig.ACTOR_FRAME_SIZE) -> void:
-	var frame := float(maxi(1, frame_size))
+## (personas reales) puede traer otra rejilla y la trae en su definición. `frame_height`
+## es 0 cuando la celda es cuadrada; las hojas horneadas miden 44 de alto con 42
+## de ancho y hay que dividir cada eje por su medida, no redondear la división
+## cruzada (con celdas suficientemente altas daría una fila de más).
+func _apply_grid(
+	sheet: Texture2D,
+	frame_size: int = GameConfig.ACTOR_FRAME_SIZE,
+	frame_height: int = 0
+) -> void:
+	var w := float(maxi(1, frame_size))
+	var h := float(maxi(1, frame_height if frame_height > 0 else frame_size))
 	var size := sheet.get_size()
-	hframes = maxi(1, int(round(size.x / frame)))
-	vframes = maxi(1, int(round(size.y / frame)))
+	hframes = maxi(1, int(round(size.x / w)))
+	vframes = maxi(1, int(round(size.y / h)))
 
 
 ## Clips que espera una hoja de actor con caminar en cuatro direcciones.
@@ -297,6 +355,15 @@ func _refresh() -> void:
 	if texture == null or not clips.has(_clip):
 		return
 	var clip := clips[_clip] as Dictionary
+	if clip.has("sheets"):
+		# Hoja por orientación: el recorte es la celda lineal de la hoja que
+		# toca, y el archivo lo decide la orientación.
+		_sync_sheet(clip)
+		var cells := maxi(1, hframes * vframes)
+		var sheet_frames := clampi(maxi(1, int(clip.get("frames", 1))), 1, cells)
+		frame = clampi(int(_elapsed), 0, sheet_frames - 1)
+		flip_h = false
+		return
 	var row := int(clip.get("row", 0))
 	if bool(clip.get("directional", false)):
 		row = _direction_row()
@@ -307,6 +374,47 @@ func _refresh() -> void:
 	column = mini(column, maxi(0, hframes - 1))
 	frame = clampi(row * maxi(1, hframes) + column, 0, maxi(0, hframes * vframes - 1))
 	_apply_flip(clip)
+
+
+## Carga la hoja de la orientación actual de un clip con `sheets` si no es la que
+## ya está puesta, y recoloca el desplazamiento para que la línea de planta del
+## clip quede en el origen del nodo.
+##
+## Sin espejos que calcular: cada dirección tiene su arte, así que `flip_h` no
+## entra aquí (lo pone `_refresh`, que siempre lo deja en `false` para esta
+## rama).
+func _sync_sheet(clip: Dictionary) -> void:
+	var sheets := clip.get("sheets", {}) as Dictionary
+	if sheets.is_empty():
+		return
+	var direction := _dir_number()
+	var path := str(sheets.get(direction, sheets.get(8, "")))
+	if path.is_empty():
+		return
+	if path != sheet_path:
+		var loaded := load(path) as Texture2D
+		if loaded == null:
+			GameLogger.warning("No se pudo cargar la hoja %s" % path, "ActorSprite")
+			return
+		texture = loaded
+		sheet_path = path
+		_apply_grid(loaded, _frame_width, _frame_height)
+	var feet := clip.get("feet", {}) as Dictionary
+	var ground := int(feet.get(direction, feet.get(8, _frame_height)))
+	offset = Vector2(0.0, float(_frame_height) * 0.5 - float(ground))
+
+
+## Número de dirección del pack para la orientación actual: el mismo esquema que
+## los nombres de archivo (`dir2` izquierda, `dir4` arriba, `dir6` derecha,
+## `dir8` abajo), el de las ocho direcciones clásicas sin los diagonales.
+func _dir_number() -> int:
+	if _facing.y > 0.0:
+		return 8
+	if _facing.y < 0.0:
+		return 4
+	if _facing.x < 0.0:
+		return 2
+	return 6
 
 
 ## Un clip direccional ya trae las cuatro orientaciones en sus propias filas, así

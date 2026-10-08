@@ -13,11 +13,17 @@ extends RefCounted
 ## Hojas del pack con su rejilla esperada, para detectar de un vistazo si un archivo
 ## se sustituye por otro de tamaño distinto.
 const SHEETS := {
-	# El jugador activo es la persona (4x8: cuatro filas de caminar, salto/caída/
-	# muerte y golpe); el ninja se conserva como fallback y se sigue comprobando.
-	# Los enemigos no tienen hoja propia: usan la de la persona, y eso lo comprueba
-	# `_enemy_attack_row` en vez de repetir aquí la misma entrada.
-	"jugador": ["res://assets/characters/human_player.png", 4, 8],
+	# El jugador activo es la persona del Hormelz horneada: la hoja de reposo
+	# mirando abajo mide 252x264, que en celdas de 42x44 son 6x6. Las celdas no
+	# son cuadradas, por eso esta entrada trae ancho y alto; las clásicas siguen
+	# siendo de 16 px y no los traen. Los enemigos no tienen hoja propia: usan la
+	# del Hormelz, y eso lo comprueba `_enemy_attack_row` en vez de repetir aquí
+	# la misma entrada.
+	"jugador": [
+		"res://assets/characters/humans/hormelz_melee/Idle1/Boxer__Idle1_dir8.png",
+		6, 6, 42, 44,
+	],
+	"humano": ["res://assets/characters/human_player.png", 4, 8],
 	"ninja": ["res://assets/characters/ninja_blue.png", 4, 7],
 	# La hoja del efecto mide 128x32, que en celdas de 16 px son 8x2. Ojo: esa no es
 	# su rejilla de dibujo (son cuatro fotogramas de 32x32, que lo comprueba
@@ -117,14 +123,23 @@ func _sheet_grids(ctx: ScriptTestContext) -> void:
 		var sheet := load(path) as Texture2D
 		if not ctx.check(sheet != null, "la hoja de %s no carga" % label):
 			continue
-		var frame := float(GameConfig.ACTOR_FRAME_SIZE)
+		# La celda puede traer ancho y alto distintos (las horneadas del Hormelz
+		# miden 42x44); quien no los trae sigue siendo cuadrada de 16 px. Cada
+		# eje se divide por SU medida: redondear la división cruzada con celdas
+		# bastante altas daría una fila de más.
+		var cell_w := float(
+			expected[3] if expected.size() > 3 else GameConfig.ACTOR_FRAME_SIZE
+		)
+		var cell_h := float(
+			expected[4] if expected.size() > 4 else int(cell_w)
+		)
 		ctx.check_equal(
-			int(round(sheet.get_size().x / frame)),
+			int(round(sheet.get_size().x / cell_w)),
 			expected[1],
 			"columnas de la hoja de %s" % label
 		)
 		ctx.check_equal(
-			int(round(sheet.get_size().y / frame)),
+			int(round(sheet.get_size().y / cell_h)),
 			expected[2],
 			"filas de la hoja de %s" % label
 		)
@@ -145,24 +160,37 @@ func _catalog_sheets(ctx: ScriptTestContext) -> void:
 	)
 
 
-## El jugador activo es la persona (la hoja de bit-era), y el ninja clásico se
-## conserva entero como fallback: las dos definiciones existen y las dos hojas
-## cargan. Si alguien quitara el ninja, esta prueba lo dice.
+## El jugador activo es la persona del Hormelz (hoja propia por orientación, con
+## veinticuatro clips medidos del pack), y el humano y el ninja clásicos se
+## conservan enteros como fallback: las tres definiciones existen y las tres
+## hojas cargan. Si alguien quitara un clásico, esta prueba lo dice.
 func _player_visuals(ctx: ScriptTestContext) -> void:
 	var active: StringName = ActorVisualCatalog.active_player()
 	ctx.check_equal(active, GameConfig.PLAYER_VISUAL, "el alias PLAYER resuelve al visual activo")
 	ctx.check(
-		active in [ActorVisualCatalog.PLAYER_HUMAN, ActorVisualCatalog.PLAYER_NINJA],
+		active in [
+			ActorVisualCatalog.PLAYER_HORMELZ,
+			ActorVisualCatalog.PLAYER_HUMAN,
+			ActorVisualCatalog.PLAYER_NINJA,
+		],
 		"el visual activo es una definición conocida"
 	)
 	var human := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_HUMAN)
 	var ninja := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_NINJA)
+	var hormelz := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_HORMELZ)
 	ctx.check(human != null and not human.sheet.is_empty(), "la persona tiene definición")
 	ctx.check(ninja != null and not ninja.sheet.is_empty(), "el ninja tiene definición")
+	ctx.check(hormelz != null and not hormelz.sheet.is_empty(), "el Hormelz tiene definición")
 	ctx.check_equal(human.sheet, "res://assets/characters/human_player.png", "hoja de la persona")
 	ctx.check_equal(ninja.sheet, "res://assets/characters/ninja_blue.png", "hoja del ninja")
+	ctx.check_equal(hormelz.sheet, HormelzVisualData.SHEET, "hoja representativa del Hormelz")
+	# Los clips por orientación son la mitad que hace falta saber de una hoja
+	# horneada: sin ellos el sprite no sabría qué archivo mirar en cada giro.
+	ctx.check(not hormelz.sheet_clips.is_empty(), "el Hormelz trae sus clips")
 	for id: StringName in [
-		ActorVisualCatalog.PLAYER_HUMAN, ActorVisualCatalog.PLAYER_NINJA
+		ActorVisualCatalog.PLAYER_HORMELZ,
+		ActorVisualCatalog.PLAYER_HUMAN,
+		ActorVisualCatalog.PLAYER_NINJA,
 	]:
 		var sprite := _prepared(id)
 		ctx.check(
@@ -223,6 +251,25 @@ func _human_dead_is_fixed(ctx: ScriptTestContext) -> void:
 func _walk_rows(ctx: ScriptTestContext) -> void:
 	var sprite := _sprite()
 	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
+	if def.sheet_clips.is_empty():
+		_walk_rows_grid(ctx, sprite, def)
+	else:
+		_walk_rows_sheet(ctx, sprite, def)
+	# El ninja sigue con el orden del pack sin reflejo: la regresión lo comprueba.
+	var ninja := _prepared(ActorVisualCatalog.PLAYER_NINJA)
+	ninja.play(ActorSprite.WALK, true)
+	ctx.check_equal(
+		_frame_facing(ninja, ActorSprite.WALK, Vector2.LEFT),
+		GameConfig.ACTOR_ROW_SIDE * ninja.hframes,
+		"el ninja usa la fila lateral del pack"
+	)
+	ctx.check_equal(ninja.flip_h, false, "y el ninja no refleja su lateral")
+
+
+## Rama de rejilla clásica: filas por orientación, espejos cuando tocan.
+func _walk_rows_grid(
+	ctx: ScriptTestContext, sprite: ActorSprite, def: CharacterVisualDefinition
+) -> void:
 	sprite.play(ActorSprite.WALK, true)
 	ctx.check_equal(
 		_frame_facing(sprite, ActorSprite.WALK, Vector2.DOWN),
@@ -261,26 +308,54 @@ func _walk_rows(ctx: ScriptTestContext) -> void:
 			"el otro lado"
 		)
 		ctx.check_equal(sprite.flip_h, false, "caminar nunca se refleja: cada fila ya es la suya")
-	# El ninja sigue con el orden del pack sin reflejo: la regresión lo comprueba.
-	var ninja := _prepared(ActorVisualCatalog.PLAYER_NINJA)
-	ninja.play(ActorSprite.WALK, true)
-	ctx.check_equal(
-		_frame_facing(ninja, ActorSprite.WALK, Vector2.LEFT),
-		GameConfig.ACTOR_ROW_SIDE * ninja.hframes,
-		"el ninja usa la fila lateral del pack"
-	)
-	ctx.check_equal(ninja.flip_h, false, "y el ninja no refleja su lateral")
+
+
+## Rama de hoja por orientación (el Hormelz): no hay filas ni espejos, pero sí
+## cuatro cosas que cuadrar con la convención de los nombres de archivo del pack
+## (`_dir_number`): el archivo que se carga al girar, el primer fotograma al
+## plantarse, y que el arte ya viene dibujado para esa dirección, así que `flip_h`
+## queda en `false`.
+func _walk_rows_sheet(
+	ctx: ScriptTestContext, sprite: ActorSprite, def: CharacterVisualDefinition
+) -> void:
+	var sheets: Dictionary = def.sheet_clips[ActorSprite.WALK]["sheets"]
+	ctx.check(sheets.size() >= 4, "el clip de caminar trae las cuatro direcciones")
+	sprite.play(ActorSprite.WALK, true)
+	for facing: Vector2 in [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]:
+		_frame_facing(sprite, ActorSprite.WALK, facing)
+		var path := sprite.texture.resource_path if sprite.texture != null else ""
+		ctx.check(
+			path.ends_with("_dir%d.png" % _dir_number(facing)),
+			"caminar mirando a %s carga la hoja de su dirección (%s)" % [facing, path]
+		)
+		ctx.check_equal(
+			sprite.frame, 0,
+			"al plantarse mirando a %s empieza en su primer fotograma" % facing
+		)
+		ctx.check_equal(sprite.flip_h, false, "la hoja de %s no se refleja" % facing)
 
 
 ## El golpe del pack solo existe mirando al frente. Si la fila cambiara con la
 ## orientación, al golpear hacia arriba saldría el fotograma de andar de frente.
 func _attack_row_is_fixed(ctx: ScriptTestContext) -> void:
 	var sprite := _sprite()
+	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
 	sprite.play(ActorSprite.ATTACK, true)
 	var row := _row(sprite)
 	for facing: Vector2 in [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]:
 		sprite.set_facing(facing)
 		ctx.check_equal(_row(sprite), row, "el golpe no cambia de fila mirando a %s" % facing)
+		if not def.sheet_clips.is_empty():
+			# En una hoja por orientación no hay fila que proteger (el golpe es la
+			# celda 0 de su hoja, `attack_row` = 0), pero sí que se dibuje con el
+			# arte de la dirección: otro archivo, sin espejos. Ese es el análogo
+			# aquí de "la fila no cambia".
+			var path := sprite.texture.resource_path if sprite.texture != null else ""
+			ctx.check(
+				path.ends_with("_dir%d.png" % _dir_number(facing)),
+				"el golpe mirando a %s sale de su propia hoja (%s)" % [facing, path]
+			)
+			ctx.check_equal(sprite.flip_h, false, "y no se refleja mirando a %s" % facing)
 	ctx.check_equal(
 		row,
 		ActorVisualCatalog.attack_row_of(ActorVisualCatalog.PLAYER),
@@ -345,17 +420,21 @@ func _walk_advances(ctx: ScriptTestContext) -> void:
 	sprite.set_facing(Vector2.DOWN)
 	var base := sprite.frame
 
-	# Cuántos fotogramas de física dura un ciclo entero de caminata.
-	var cycle := int(
-		ceil(float(GameConfig.ACTOR_WALK_FRAMES) / GameConfig.ACTOR_WALK_FPS / STEP)
-	)
+	# Cuántos fotogramas de física dura un ciclo entero de caminata. Se lee del
+	# clip que suena de verdad, no de una constante global: la hoja activa trae
+	# 24 fotogramas a 50 fps y la clásica, los suyos de `GameConfig`, y el ciclo
+	# tiene que cuadrar con cualquiera de las dos.
+	var walk: Dictionary = sprite.clips[ActorSprite.WALK]
+	var walk_frames := int(walk.get("frames", 1))
+	var walk_fps := float(walk.get("fps", 1.0))
+	var cycle := int(ceil(float(walk_frames) / walk_fps / STEP))
 	var columns: Array[int] = []
 	for _frame: int in range(cycle):
 		sprite._process(STEP)
 		columns.append(sprite.frame)
 	ctx.check(sprite.is_playing(ActorSprite.WALK), "sigue andando")
 
-	# Un ciclo entero tiene que pasar por los cuatro fotogramas de la fila y volver al
+	# Un ciclo entero tiene que pasar por todos los fotogramas de la fila y volver al
 	# primero. No se comprueba fotograma a fotograma contra un número exacto porque los
 	# deltas de verdad van CON.step y el acumulador se queda unas centesimas por debajo
 	# del borde: eso retrasa un fotograma un frame y no se ve, pero haria fallar una
@@ -366,15 +445,16 @@ func _walk_advances(ctx: ScriptTestContext) -> void:
 			visited.append(value - base)
 	visited.sort()
 	ctx.check_equal(
-		visited, range_array(GameConfig.ACTOR_WALK_FRAMES), "ha pasado por los cuatro"
+		visited, range_array(walk_frames),
+		"ha pasado por los %d fotogramas del clip" % walk_frames
 	)
 	ctx.check(
 		absi(sprite.frame - base) <= sprite.hframes,
-		"el ciclo ha vuelto a la fila de abajo, no a otra"
+		"el ciclo ha vuelto al principio, no a mitad de la hoja"
 	)
 	ctx.check(
-		sprite.frame - base < GameConfig.ACTOR_WALK_FRAMES,
-		"y sin pasarse del último fotograma de la fila"
+		sprite.frame - base < walk_frames,
+		"y sin pasarse del último fotograma del clip"
 	)
 
 
@@ -414,10 +494,13 @@ func _replay_is_noop(ctx: ScriptTestContext) -> void:
 	var sprite := _sprite()
 	sprite.play(ActorSprite.WALK, true)
 	var down_frame := sprite.frame
-	# Se avanza lo que miden un fotograma y medio: suficiente para haber salido del
-	# primero, y no tanto como para haber vuelto a él.
+	# Se avanza lo que miden un fotograma y medio del clip que suena: suficiente
+	# para haber salido del primero, y no tanto como para haber vuelto a él. El
+	# fps sale del clip, no de una constante: cada hoja camina al suyo.
+	var walk: Dictionary = sprite.clips[ActorSprite.WALK]
+	var walk_fps := float(walk.get("fps", 1.0))
 	for _frame: int in range(
-		maxi(1, int(ceil(1.5 / GameConfig.ACTOR_WALK_FPS / STEP)))
+		maxi(1, int(ceil(1.5 / walk_fps / STEP)))
 	):
 		sprite._process(STEP)
 	var advanced := sprite.frame
@@ -445,30 +528,42 @@ func _unknown_clip(ctx: ScriptTestContext) -> void:
 	ctx.check(
 		ActorSprite.KNOWN_CLIPS.has(ActorSprite.ATTACK), "el golpe es un clip conocido"
 	)
+	# La hoja activa amplía el vocabulario con sus clips de combate: el ataque
+	# concreto tiene que existir para que quien lanza el golpe no caiga en
+	# silencio al estándar.
+	ctx.check(
+		sprite.has_clip(ActorSprite.ATTACK), "el golpe es reproducible en la hoja activa"
+	)
+	if not ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER).sheet_clips.is_empty():
+		for id: StringName in [&"left_jab", &"front_kick", &"roll_forward", &"hit_light"]:
+			ctx.check(sprite.has_clip(id), "el clip %s existe en la hoja del jugador" % id)
+		ctx.check(not sprite.has_clip(&"flamenco"), "y un clip inventado no existe")
 
 
 ## Los enemigos son personas: los cuatro tipos comparten hoja, definición y fila de
-## ataque con el jugador, y su golpe no cambia de fila con la orientación.
+## ataque con el jugador activo, y su golpe no cambia de fila con la orientación.
 ##
 ## Este caso existía para los bichos del pack, que no traían fila de ataque y
 ## golpeaban con la pose de frente de su propia hoja. Hoy lo que hay que vigilar es
 ## lo contrario: que nadie deje a un tipo con la hoja vieja, con una hoja inventada
-## o con una fila de ataque distinta de la de la persona.
+## o con una fila de ataque distinta de la del jugador. Se compara contra el visual
+## ACTIVO (no contra la persona clásica): el enemigo y el jugador tienen que ser
+## indistinguibles salvo por el tinte, vaya la hoja que vaya.
 func _enemy_attack_row(ctx: ScriptTestContext) -> void:
-	var human := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER_HUMAN)
-	if not ctx.check(human != null, "la persona tiene definición"):
+	var active := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
+	if not ctx.check(active != null, "el jugador activo tiene definición"):
 		return
 	for kind: StringName in NPC_KINDS:
 		var sprite := _prepared(kind)
 		if not _context_has_texture(sprite, kind, ctx):
 			continue
 		ctx.check_equal(
-			ActorVisualCatalog.sheet_of(kind), human.sheet,
-			"el enemigo %s usa la hoja de la persona" % kind
+			ActorVisualCatalog.sheet_of(kind), active.sheet,
+			"el enemigo %s usa la hoja del jugador" % kind
 		)
 		ctx.check_equal(
-			ActorVisualCatalog.attack_row_of(kind), human.attack_row,
-			"el enemigo %s golpea con la fila de ataque de la persona" % kind
+			ActorVisualCatalog.attack_row_of(kind), active.attack_row,
+			"el enemigo %s golpea con la fila de ataque del jugador" % kind
 		)
 		sprite.play(ActorSprite.ATTACK, true)
 		var row := _row(sprite)
@@ -478,7 +573,13 @@ func _enemy_attack_row(ctx: ScriptTestContext) -> void:
 				_row(sprite), row,
 				"el golpe de %s no cambia de fila mirando a %s" % [kind, facing]
 			)
-		ctx.check_equal(row, human.attack_row, "y esa fila es la de la persona")
+			if not active.sheet_clips.is_empty():
+				var path := sprite.texture.resource_path if sprite.texture != null else ""
+				ctx.check(
+					path.ends_with("_dir%d.png" % _dir_number(facing)),
+					"el golpe de %s mirando a %s sale de su propia hoja" % [kind, facing]
+				)
+		ctx.check_equal(row, active.attack_row, "y esa fila es la del jugador")
 
 
 ## Los cuatro tipos comparten hoja, así que el color de la ropa es lo único que en
@@ -517,7 +618,11 @@ func _frames_stay_in_grid(ctx: ScriptTestContext) -> void:
 		var sprite := _prepared(kind)
 		if not _context_has_texture(sprite, kind, ctx):
 			continue
-		for clip: StringName in ActorSprite.KNOWN_CLIPS:
+		# Se recorren LOS CLIPS DE LA HOJA, no los cuatro estándar: una hoja por
+		# orientación añade los doce golpes, las reacciones, las caídas y las
+		# rodadas, y todos ellos tienen que caber en su rejilla. Recorrer solo
+		# `KNOWN_CLIPS` dejaba sin probar medio combate.
+		for clip: StringName in sprite.clips:
 			for facing: Vector2 in [
 				Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT
 			]:
@@ -664,12 +769,18 @@ func _fx_origin(ctx: ScriptTestContext) -> void:
 	var sheet := load(path) as Texture2D
 	if not ctx.check(sheet != null, "falta la hoja del efecto (%s)" % path):
 		return
+	# El centro del torso lo pone la definición visual del actor que pega: la hoja
+	# clásica lo tiene en -8 y la persona horneada en -14. El efecto no lo adivina,
+	# y esta prueba tampoco: se le pasa el mismo dato que le pasa el presentador.
+	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
+	if not ctx.check(def != null, "el jugador activo tiene definición"):
+		return
 	var frames := _fx_cells(sheet)
 	for label: String in FX_DIRECTIONS:
 		var direction: Vector2 = FX_DIRECTIONS[label]
 		var silhouette := _fx_body_cells(body, direction)
 		# Los pies en el origen, que es como vive el actor en el mundo.
-		var origin := SlashEffect.origin_for(Vector2.ZERO, direction)
+		var origin := SlashEffect.origin_for(Vector2.ZERO, direction, def.torso_offset)
 		var arc: Array[Vector2i] = []
 		for cells: Array in frames:
 			for point: Vector2i in cells:
@@ -729,12 +840,20 @@ func _fx_cells(sheet: Texture2D) -> Array:
 	return cells
 
 
-## Píxeles del cuerpo con los pies en el origen: fila de la orientación y fotograma
-## de reposo, que es la columna 0, igual que los coloca `ActorSprite` al parar.
+## Píxeles del cuerpo con los pies en el origen: pose de reposo, que es la columna
+## 0, igual que los coloca `ActorSprite` al parar.
+##
+## En una hoja por orientación no hay filas: el archivo lo decide la dirección, el
+## fotograma es la celda 0 y los pies salen del clip de reposo de esa dirección
+## (una hoja horneada se planta a una altura distinta por lado). Se lee la hoja que
+## carga la propia definición, no la que traiga el parámetro, porque en esa rama el
+## dibujo viene entero por archivo.
 func _fx_body_cells(body: Texture2D, direction: Vector2) -> Array[Vector2i]:
+	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
+	if not def.sheet_clips.is_empty():
+		return _fx_sheet_body_cells(def, direction)
 	# Las filas del cuerpo son las de la definición del jugador (el humano ordena
 	# las suyas distinto al pack: frente=1, laterales=2, espalda=3).
-	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
 	var row := def.row_side
 	if direction.y < 0.0:
 		row = def.row_up
@@ -748,6 +867,48 @@ func _fx_body_cells(body: Texture2D, direction: Vector2) -> Array[Vector2i]:
 			if image.get_pixel(x, row * size + y).a > 0.05:
 				points.append(Vector2i(x - size / 2, y - size))
 	return points
+
+
+## Píxeles del cuerpo en una hoja por orientación: el archivo de la dirección, la
+## celda de reposo, y los pies del clip de esa dirección en el origen (el cuerpo
+## se sigue dibujando hacia arriba desde ahí).
+func _fx_sheet_body_cells(
+	def: CharacterVisualDefinition, direction: Vector2
+) -> Array[Vector2i]:
+	var idle: Dictionary = def.sheet_clips[ActorSprite.IDLE]
+	var direction_number := _dir_number(direction)
+	var path := str((idle["sheets"] as Dictionary).get(direction_number, ""))
+	var sheet := load(path) as Texture2D
+	if sheet == null:
+		return []
+	var feet := int((idle["feet"] as Dictionary).get(direction_number, def.cell_height()))
+	var width := def.frame_size
+	var height := def.cell_height()
+	var image := sheet.get_image()
+	var points: Array[Vector2i] = []
+	for y: int in range(height):
+		for x: int in range(width):
+			if image.get_pixel(x, y).a > 0.05:
+				points.append(Vector2i(x - width / 2, y - feet))
+	return points
+
+
+## Número de dirección del pack para una orientación, según la convención de los
+## nombres de archivo del Hormelz: `dir8` abajo, `dir4` arriba, `dir2` izquierda,
+## `dir6` derecha. La confirmó el análisis de contacto de los golpes (los laterales
+## tienen media anchura del cuerpo, los de frente y espalda el ancho entero).
+##
+## Se escribe a mano a propósito, sin preguntarle al reproductor: si `ActorSprite`
+## invertiera dos direcciones, esta prueba tendría que decirlo en vez de repetir el
+## mismo error por los dos lados.
+func _dir_number(facing: Vector2) -> int:
+	if facing.y > 0.0:
+		return 8
+	if facing.y < 0.0:
+		return 4
+	if facing.x < 0.0:
+		return 2
+	return 6
 
 
 ## Rotación exacta de 90 en 90 grados, sin senos ni cosenos, que redondean.

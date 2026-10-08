@@ -456,10 +456,12 @@ func _weapon_grip_on_body(weapon: Sprite2D) -> Vector2:
 ## Al soltar el botón el personaje se queda mirando hacia donde iba, no vuelve a mirar
 ## al frente ni se vuelve de lado.
 ##
-## El fotograma parado es la primera columna de la fila de la orientación, así que aquí
-## se comprueba que sea la columna 0 de la fila que toca y no otra: un clip de caminar
-## cuya fila se calculase mal se notaría justo al parar, que es cuando se ve la pose
-## quieta.
+## En la rejilla clásica el fotograma parado es la primera columna de la fila de la
+## orientación, así que aquí se comprueba que sea la columna 0 de la fila que toca y no
+## otra: un clip de caminar cuya fila se calculase mal se notaría justo al parar, que es
+## cuando se ve la pose quieta. En una hoja por orientación no hay filas: la pose quieta
+## es el fotograma 0 de TODOS los clips y lo que tiene que cambiar al girar es el archivo,
+## el de la dirección que toca, sin espejos.
 func _facing_kept_on_stop() -> void:
 	var player := _player_or_report()
 	if player == null:
@@ -468,6 +470,7 @@ func _facing_kept_on_stop() -> void:
 	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
 		return
 	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
+	var sheet_based := not def.sheet_clips.is_empty()
 	var rows: Array[int] = [
 		def.row_side_mirrored,
 		def.row_up,
@@ -481,6 +484,8 @@ func _facing_kept_on_stop() -> void:
 		Input.action_release(_action_for(direction))
 		await _settle(8)
 		var expected: int = rows[index] * maxi(1, actor.hframes)
+		if sheet_based:
+			expected = 0
 		_context.check(
 			actor.current_clip() == ActorSprite.IDLE,
 			"parado tras ir a %s el clip es %s, no idle" % [direction, str(actor.current_clip())]
@@ -495,6 +500,12 @@ func _facing_kept_on_stop() -> void:
 			actor.facing() == direction,
 			"parado tras ir a %s el sprite mira a %s" % [direction, str(actor.facing())]
 		)
+		if sheet_based:
+			var path := actor.texture.resource_path if actor.texture != null else ""
+			_context.check(
+				path.ends_with("_dir%d.png" % _dir_number(direction)),
+				"parado tras ir a %s la hoja es %s y toca la de su dirección" % [direction, path]
+			)
 		# La izquierda del humano se refleja (su hoja solo camina a la derecha); el
 		# resto de orientaciones y el ninja van sin espejo.
 		var expected_flip := def.mirror_side and direction == Vector2.LEFT
@@ -602,9 +613,11 @@ func _walk_after_attack_does_not_replay_the_swing() -> void:
 	# Una vuelta completa andando, girando en las cuatro direcciones.
 	var attack_frames: int = 0
 	var walk_rows: Dictionary = {}
+	var walk_sheets: Dictionary = {}
 	var clips: Dictionary = {}
 	var previous_attack_frame: int = -1
 	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
+	var sheet_based := not def.sheet_clips.is_empty()
 	var expected_rows := {def.walk_row: true, def.row_side: true, def.row_up: true, def.row_side_mirrored: true}
 	for direction: Vector2 in DIRECTIONS:
 		var action := _action_for(direction)
@@ -621,7 +634,13 @@ func _walk_after_attack_does_not_replay_the_swing() -> void:
 				previous_attack_frame = actor.frame
 			elif clip == ActorSprite.WALK:
 				previous_attack_frame = -1
-				walk_rows[actor.frame / maxi(1, actor.hframes)] = true
+				if sheet_based:
+					# No hay filas que mirar: cada dirección tiene su archivo. Lo que
+					# se colecciona es el archivo visto, no el fotograma.
+					if actor.texture != null:
+						walk_sheets[actor.texture.resource_path.get_file()] = true
+				else:
+					walk_rows[actor.frame / maxi(1, actor.hframes)] = true
 		Input.action_release(action)
 		await _settle(4)
 
@@ -631,6 +650,9 @@ func _walk_after_attack_does_not_replay_the_swing() -> void:
 			attack_frames, str(clips)
 		]
 	)
+	if sheet_based:
+		_check_walk_sheets(walk_sheets)
+		return
 	# La izquierda y la derecha del humano comparten la fila lateral (una se
 	# refleja), así que el número de filas distintas no tiene por qué ser cuatro:
 	# lo que se exige es que todas las filas que tocan se hayan visto y ninguna
@@ -655,6 +677,48 @@ func _walk_after_attack_does_not_replay_the_swing() -> void:
 			str(extra), str(expected_rows.keys())
 		]
 	)
+
+
+## En una hoja por orientación, "las filas que tocan" son los cuatro archivos de
+## dirección: se ha visto alguno que no es de ninguna (otro pack, otro clip) y no se
+## ha visto alguno de los cuatro (un giro que no cambió de hoja, que es la clase de
+## fallo que en la rejilla clásica aparecía como fila equivocada).
+func _check_walk_sheets(walk_sheets: Dictionary) -> void:
+	var seen: Dictionary = {}
+	for file: String in walk_sheets:
+		var matched := false
+		for dir_number: int in [2, 4, 6, 8]:
+			if file.ends_with("_dir%d.png" % dir_number):
+				seen[dir_number] = true
+				matched = true
+		_context.check(
+			matched,
+			"andando se ha visto la hoja %s, que no es de ninguna dirección del pack" % file
+		)
+	var missing: Array[int] = []
+	for dir_number: int in [2, 4, 6, 8]:
+		if not seen.has(dir_number):
+			missing.append(dir_number)
+	_context.check(
+		missing.is_empty(),
+		"andando en circulo tras golpear no se ha visto la hoja de las direcciones %s (vistas: %s)" % [
+			str(missing), str(walk_sheets.keys())
+		]
+	)
+
+
+## Número de dirección del pack para una orientación, según la convención de los
+## nombres de archivo del Hormelz (`dir8` abajo, `dir4` arriba, `dir2` izquierda,
+## `dir6` derecha). Escrito a mano: si el reproductor invirtiera dos direcciones,
+## esta prueba tiene que decirlo en vez de repetir el error.
+func _dir_number(facing: Vector2) -> int:
+	if facing.y > 0.0:
+		return 8
+	if facing.y < 0.0:
+		return 4
+	if facing.x < 0.0:
+		return 2
+	return 6
 
 
 ## Un giro a mitad de golpe no reinicia el clip del golpe.

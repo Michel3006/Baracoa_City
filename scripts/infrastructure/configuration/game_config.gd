@@ -50,7 +50,13 @@ const ITEM_BERRY_NAME := "Baya"
 const DEFAULT_ATTACK_COOLDOWN := 0.45
 const INVULNERABILITY_TIME := 0.6
 ## Duración del estado ATTACKING: el jugador queda comprometido durante la Recuperacion.
-const ATTACK_RECOVERY := 0.22
+##
+## 0.23 s no es un número redondo: es el puñetazo izquierdo del pack Hormelz
+## (15 fotogramas a 68 fps = 0.2206 s) con un pizco de margen, y la prueba de
+## arranque exige que el estado dure 13/60 = 0.2167 s sin llegar a 0.2467 s.
+## Si cambia el clip de `ATTACK`, cambia este número: `tests/unit/test_actor_sprite`
+## compara los dos contra la misma fórmula.
+const ATTACK_RECOVERY := 0.23
 ## Fracción del cooldown durante la que la hitbox está activa. El golpe se registra
 ## en un instante concreto, no durante todo el cooldown.
 const HITBOX_ACTIVE_RATIO := 0.35
@@ -95,10 +101,12 @@ const WORLD_ZONE_SIZE := Vector2i(64, 64)
 const PLAYER_SPAWN := Vector2(200, 200)
 
 # --- Presentacion de actores (seccion 25: los placeholders dan paso a sprites) ---
-## Qué visual usa el jugador (especificación de personas, sección 18): el humano
-## por defecto, el ninja como fallback. Son los ids de `ActorVisualCatalog`; el
-## catálogo resuelve el alias `PLAYER` con este valor.
-const PLAYER_VISUAL: StringName = &"player_human"
+## Qué visual usa el jugador (especificación de personas, sección 18): el pack
+## Hormelz por defecto, con hoja propia por orientación y los doce golpes del
+## combate dibujados. Son los ids de `ActorVisualCatalog`; el catálogo resuelve
+## el alias `PLAYER` con este valor. Cambiarlo a `&"player_human"` o
+## `&"player_ninja"` vuelve a las hojas clásicas de rejilla sin tocar nada más.
+const PLAYER_VISUAL: StringName = &"player_hormelz"
 ## Lado de un frame de personaje. El pack de sprites usa 16x16, el mismo tamano
 ## que el tile del mapa, asi que un personaje ocupa exactamente un tile de ancho.
 const ACTOR_FRAME_SIZE := 16
@@ -122,8 +130,9 @@ const ACTOR_WALK_FPS := 8.0
 ##
 ## Los cuatro fotogramas tienen que caber dentro de `ATTACK_RECOVERY`, que es lo que
 ## el actor está bloqueado después de pegar. A 14 fps el arco duraba 0.29 s contra los
-## 0.22 s de recuperación, así que el último fotograma nunca se veía. Si alguna vez se
-## toca `ATTACK_RECOVERY` hay que revisar esto: hay un test que lo comprueba.
+## 0.22 s de recuperación de entonces, así que el último fotograma nunca se veía. Hoy
+## la recuperación es 0.23 y esta ruta clásica sigue cabiendo (4/20 = 0.20 s); hay un
+## test que lo comprueba contra `ATTACK_RECOVERY`.
 const ACTOR_ATTACK_FRAMES := 4
 const ACTOR_ATTACK_FPS := 20.0
 ## Desplazamiento en vertical del sprite respecto a los pies, en pixeles. El
@@ -141,10 +150,11 @@ const ACTOR_SPRITE_OFFSET := Vector2(0.0, -8.0)
 const FX_FRAME_WIDTH := 32
 const FX_FRAME_HEIGHT := 32
 const FX_FRAMES := 4
-## Fotogramas por segundo del arco. Con cuatro fotogramas salen 0.22 s, que es
-## practicamente lo que dura la pose de golpe (`ATTACK_RECOVERY`): la barre mientras
+## Fotogramas por segundo del arco. Con cuatro fotogramas salen 0.222 s, que es
+## prácticamente lo que dura la pose de golpe (`ATTACK_RECOVERY`): la barre mientras
 ## el cuerpo barre y se va al terminar. Si se toca `ATTACK_RECOVERY` o `FX_FPS` hay
-## que revisarlo, que hay un test que compara las dos cosas.
+## que revisarlo, que hay un test que compara las dos cosas (margen: 0.222 contra
+## 0.23 de recuperación, ratio 0.97).
 const FX_FPS := 18.0
 ## Punto de anclaje del efecto, medido desde el centro del cuerpo y por delante, en la
 ## dirección del golpe.
@@ -169,13 +179,13 @@ const FX_Z_INDEX := 8
 ## iba al frente. A puños el cuerpo se queda en su pose de la orientación y el
 ## brazo sale hacia donde se mira, con las dos manos alternadas (jab y cruz).
 ##
-## Las fases son fracciones de `ATTACK_RECOVERY` (0.22 s ≈ 13 fotogramas de
+## Las fases son fracciones de `ATTACK_RECOVERY` (0.23 s ≈ 14 fotogramas de
 ## física) y reparten los fotogramas así: guardia 1, carga 2, extensión 3,
 ## impacto sostenido 3 y retorno 4. El orden es el de un puñetazo real.
 ##
 ## La extensión termina en `PUNCH_THRUST_END` = 0.45, antes de que cierre la
 ## ventana de hitbox (0.3 s de cooldown sin arma x 0.35 de `HITBOX_ACTIVE_RATIO`
-## sobre 0.22 s = 0.477): el puño está salido cuando se registra el golpe, nunca
+## sobre 0.23 s = 0.497): el puño está salido cuando se registra el golpe, nunca
 ## al revés.
 const PUNCH_GUARD_END := 0.08
 const PUNCH_WINDUP_END := 0.22

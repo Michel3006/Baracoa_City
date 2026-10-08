@@ -23,6 +23,9 @@ var sheet: String = ""
 ## Lado de un frame. El pack usa 16x16; se deja aquí porque una hoja futura
 ## (personas reales) podría traer otra rejilla.
 var frame_size: int = GameConfig.ACTOR_FRAME_SIZE
+## Alto de la celda. `0` = celda cuadrada (= `frame_size`). Las hojas horneadas
+## miden 44 de alto con 42 de ancho y hay que dividir cada eje por su medida.
+var frame_height: int = 0
 ## Fila de la orientación de abajo (el frente). Es la base de la que salen las
 ## otras tres en el pack clásico (`walk_row + ACTOR_ROW_*`); una hoja ajena puede
 ## ordenar sus filas distinto y entonces se escriben aquí las otras tres.
@@ -97,3 +100,33 @@ var punch_outline: Color = Color.BLACK
 var dead_row: int = 0
 var dead_column: int = 0
 var dead_directional: bool = true
+## Clips con hoja propia por orientación (packs horneados, como el Hormelz).
+##
+## Cuando este diccionario viene vacío, la hoja es una rejilla clásica y el
+## reproductor recorta filas y columnas como siempre. Cuando trae datos, cada
+## clip no recorta nada: la orientación decide QUÉ ARCHIVO se carga (el arte ya
+## viene dibujado para esa dirección, sin espejos) y el fotograma es la celda
+## lineal de esa hoja. La estructura de cada clip es la de
+## `HormelzVisualData.sheet_clips()`: `sheets` (dir -> ruta), `feet`
+## (dir -> línea de planta en píxeles de celda), `frames`, `fps` y `loop`.
+##
+## El resto de campos de esta definición siguen mandando para lo que son
+## datos de la hoja (tamaño de celda, fila del golpe para el catálogo), pero
+## las filas y el espejo solo los usa la rama de rejilla clásica.
+var sheet_clips: Dictionary = {}
+## Centro del torso, en coordenadas del nodo (los pies en el origen).
+##
+## Es el punto del que sale el arco de golpe (`SlashEffect.origin_for`): el
+## brazo se articula desde el hombro, no desde los pies. Las hojas clásicas de
+## 16 px tienen el torso en (-8); la persona horneada mide 26 px de alto, así
+## que su centro está en -14 (medido: el contenido ocupa y = -26..-1). Si el
+## arco sale desplazado en el eje transversal es porque este valor no coincide
+## con el cuerpo real, no porque falle el efecto.
+var torso_offset: Vector2 = GameConfig.ACTOR_SPRITE_OFFSET
+
+## Alto de la celda de la hoja. `0` significa celda cuadrada (= `frame_size`):
+## las hojas clásicas miden 16x16, pero las horneadas del Hormelz son de 42x44
+## (el original es de 126x132 y 132/3 = 44) y dividir el alto por el ancho
+## redondeado a veces daría una fila de más.
+func cell_height() -> int:
+	return frame_height if frame_height > 0 else frame_size

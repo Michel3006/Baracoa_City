@@ -31,12 +31,12 @@ const HAND_REACH := 5.0
 ## suelo por debajo de los pies.
 const HAND_VERTICAL_REACH := 3.0
 
-## Altura de la mano sobre los pies. El origen del cuerpo esta en los pies y el actor
-## mide `ACTOR_FRAME_SIZE` hacia arriba, asi que sin este margen el arma se dibujaria a
-## la altura del suelo mirando hacia abajo y por encima de la cabeza mirando hacia
-## arriba. Se toma de la altura del cuadro para que siga siendo coherente si cambia el
-## tamaño del fotograma.
-const HAND_HEIGHT := float(GameConfig.ACTOR_FRAME_SIZE) * 0.375
+## Altura de la mano sobre los pies. Medido sobre la persona horneada (26 px de
+## alto, torso a -14): con 10 la mano cae a la cadera en las cuatro orientaciones
+## y el arma de 16 px cruza el cuerpo entero sin salirse por debajo de los pies.
+## Los límites duros los pone `_hand_on_body` en las pruebas: la mano tiene que
+## quedar por debajo de la cabeza (y > -16) y por encima de los pies.
+const HAND_HEIGHT := 10.0
 
 ## Inclinación del arma quieta, en radianes, hacia donde mira el jugador. La textura
 ## del arma apunta hacia arriba, así que sin inclinar nada sale vertical en las cuatro
@@ -63,6 +63,12 @@ var combat_target: Object = null
 var _facing: Vector2 = Vector2.DOWN
 var _is_walking: bool = false
 var _swing: float = -1.0
+## Clip que se reproduce mientras dure el golpe: el estándar o el del ataque
+## concreto, si su animación existe en la hoja.
+var _attack_clip: StringName = ActorSprite.ATTACK
+## Duración conocida del golpe en curso. La decide el ataque (`AttackDefinition`
+## vía `begin_attack`); por defecto es la recuperación genérica.
+var _swing_duration: float = GameConfig.ATTACK_RECOVERY
 var _is_hurt: bool = false
 var _is_stunned: bool = false
 var _is_dead: bool = false
@@ -175,23 +181,29 @@ func facing() -> Vector2:
 
 ## Inicia la pose de golpe y enciende la hitbox. La duración la lleva
 ## `MeleeCombat`; aquí solo se guarda el progreso 0..1 que se dibuja.
-func begin_attack(weapon: Weapon = null) -> void:
+##
+## `attack_id` es el ataque concreto (izquierda, cruzada, patada...): si la hoja
+## trae su animación, se reproduce esa; si no, cae al clip estándar de ataque.
+## `duration` es lo que la pose debe durar en segundos (negativo = la
+## recuperación genérica). Los dos son opcionales para que llamar a
+## `begin_attack()` sin más siga haciendo lo de siempre.
+func begin_attack(weapon: Weapon = null, attack_id: StringName = &"", duration: float = -1.0) -> void:
 	_swing = 0.0
+	_swing_duration = duration if duration > 0.0 else GameConfig.ATTACK_RECOVERY
 	if weapon != null:
 		set_weapon(weapon)
 	if hitbox != null:
 		hitbox.face(_facing)
 		hitbox.set_active(true)
-	if _is_unarmed:
-		if _punch != null:
-			_punch.end()
-		if _actor != null:
-			_actor.play(ActorSprite.ATTACK, true)
-	else:
-		if _punch != null:
-			_punch.end()
-		if _actor != null:
-			_actor.play(ActorSprite.ATTACK, true)
+	# El brazo dibujado no pinta nada en ninguna hoja: el cuerpo tiene su propio
+	# puñetazo. Se cierra por si acaso quedó activo de una versión anterior.
+	if _punch != null:
+		_punch.end()
+	_attack_clip = ActorSprite.ATTACK
+	if attack_id != &"" and _actor != null and _actor.has_clip(attack_id):
+		_attack_clip = attack_id
+	if _actor != null:
+		_actor.play(_attack_clip, true)
 	_refresh_animation()
 
 
@@ -327,9 +339,9 @@ func _ensure_weapon_sprite() -> Sprite2D:
 func _physics_process(delta: float) -> void:
 	if _swing >= 0.0:
 		_swing += delta
-		if _swing >= GameConfig.ATTACK_RECOVERY:
+		if _swing >= _swing_duration:
 			# El caso de uso cierra el golpe con `attack_finished`, pero la vista no
-			# puede quedarse clavada en la pose si esa señal no llega: el arco tiene
+			# puede quedarse clavada en la pose si esa señal no llega: el ataque tiene
 			# una duración conocida y aquí se cierra al cumplirse. Con las dos cosas el
 			# cuerpo vuelve a caminar pase lo que pase.
 			end_attack()
@@ -352,8 +364,8 @@ func _refresh_animation() -> void:
 		_actor.play(ActorSprite.DEAD)
 		return
 	if _swing >= 0.0:
-		if _actor.current_clip() != ActorSprite.ATTACK:
-			_actor.play(ActorSprite.ATTACK, true)
+		if _actor.current_clip() != _attack_clip:
+			_actor.play(_attack_clip, true)
 		return
 	if _is_walking:
 		_actor.play(ActorSprite.WALK)
@@ -420,8 +432,15 @@ func hand_position(direction: Vector2 = _facing) -> Vector2:
 	)
 
 
-## Avance del swing, de 0 a 1, sobre el tiempo de recuperación configurado.
+## Avance del swing, de 0 a 1, sobre la duración del ataque en curso.
 func _swing_ratio() -> float:
 	if _swing <= 0.0:
 		return 0.0
-	return clampf(_swing / GameConfig.ATTACK_RECOVERY, 0.0, 1.0)
+	return clampf(_swing / maxf(_swing_duration, 0.001), 0.0, 1.0)
+
+
+## Centro del torso del actor dibujado, para situar el arco de golpe.
+func torso_offset() -> Vector2:
+	if _actor != null:
+		return _actor.torso_offset()
+	return GameConfig.ACTOR_SPRITE_OFFSET

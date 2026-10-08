@@ -44,13 +44,19 @@ func _ready() -> void:
 
 ## Punto alrededor del que gira el arco, en coordenadas del mundo.
 ##
-## El cuerpo se dibuja hacia arriba desde los pies, así que su centro está
-## `ACTOR_SPRITE_OFFSET` por encima del nodo. El arco gira sobre su centro: si se le
-## pone sobre los pies, el golpe lateral sale a la altura de los tobillos y el de
-## arriba se pone encima de la cabeza en vez de delante de ella. De aquí sale la
-## posición; `FX_ORIGIN_OFFSET` es lo que lo separa por delante del cuerpo.
-static func origin_for(body_position: Vector2, direction: Vector2) -> Vector2:
-	var center := body_position + GameConfig.ACTOR_SPRITE_OFFSET
+## El cuerpo se dibuja hacia arriba desde los pies, así que su centro del torso
+## está `torso` por encima del nodo: la hoja clásica lo tiene en -8 y la persona
+## horneada en -14, y es un dato de la definición visual, no una constante del
+## efecto. El arco gira sobre su centro: si se le pone sobre los pies, el golpe
+## lateral sale a la altura de los tobillos y el de arriba se pone encima de la
+## cabeza en vez de delante de ella. De aquí sale la posición; `FX_ORIGIN_OFFSET`
+## es lo que lo separa por delante del cuerpo.
+##
+## El parámetro es obligatorio a propósito: quien crea el efecto tiene que mirar
+## el torso del actor que pega (lo lee de su `CharacterVisualDefinition`), y un
+## valor por defecto dejaría el arco a la altura equivocada en silencio.
+static func origin_for(body_position: Vector2, direction: Vector2, torso: Vector2) -> Vector2:
+	var center := body_position + torso
 	if direction.is_zero_approx():
 		return center
 	return center + direction.normalized() * GameConfig.FX_ORIGIN_OFFSET

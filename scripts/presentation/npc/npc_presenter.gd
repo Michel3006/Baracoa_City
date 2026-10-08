@@ -159,7 +159,7 @@ func _on_attack_started(direction: Vector2, _window: float) -> void:
 func _spawn_slash(direction: Vector2) -> void:
 	if _fx_parent == null or _view == null:
 		return
-	var origin := SlashEffect.origin_for(_view.global_position, direction)
+	var origin := SlashEffect.origin_for(_view.global_position, direction, _view.torso_offset())
 	SlashEffect.spawn(_fx_parent, direction, origin)
 
 

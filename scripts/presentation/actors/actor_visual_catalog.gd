@@ -9,18 +9,19 @@ extends RefCounted
 ## definición de la persona y darle un tinte; ni la vista ni el caso de uso saben
 ## nombres de archivo.
 ##
-## El jugador tiene dos definiciones visuales: el humano (`PLAYER_HUMAN`, el que
-## se ve al jugar) y el ninja (`PLAYER_NINJA`, el clásico, que se conserva como
-## fallback). Cuál de las dos usa el juego lo decide `GameConfig.PLAYER_VISUAL`;
-## el id `PLAYER` es un alias que resuelve al visual activo, para que las vistas
-## no tengan que saber cuál es.
+## El jugador tiene tres definiciones visuales: el Hormelz (`PLAYER_HORMELZ`, el
+## que se ve al jugar, con hoja propia por orientación), el humano (`PLAYER_HUMAN`,
+## la hoja clásica de bit-era) y el ninja (`PLAYER_NINJA`, el clásico). Cuál de
+## ellas usa el juego lo decide `GameConfig.PLAYER_VISUAL`; el id `PLAYER` es un
+## alias que resuelve al visual activo, para que las vistas no tengan que saber
+## cuál es.
 ##
-## Los cuatro tipos de enemigo comparten la definición de la persona: mismas
-## animaciones de combate que el jugador (caminar, golpear con los tres fotogramas
-## del puñetazo y morir tumbado). Lo que los distingue es el nombre (`NpcKind`) y
-## el color de la ropa (`tint_of`). Al sustituir los bichos del pack —que no traían
-## fila de ataque y morían de pie— no hizo falta tocar el reproductor ni ninguna
-## vista: solo esta definición, `NpcKind` y los colores de `GameConfig`.
+## Los cuatro tipos de enemigo comparten la definición del Hormelz: mismas
+## animaciones de combate que el jugador (caminar, las doce patadas y puñetazos
+## del pack y morir tumbado). Lo que los distingue es el nombre (`NpcKind`) y
+## el color de la ropa (`tint_of`). Al sustituir los bichos del pack —que no
+## traían fila de ataque y morían de pie— no hizo falta tocar el reproductor ni
+## ninguna vista: solo esta definición, `NpcKind` y los colores de `GameConfig`.
 ##
 ## Solo datos, sin nodos ni estado. Vive en Presentation porque una ruta de textura
 ## es cosa de esa capa: el dominio no sabe que existen hojas de sprites.
@@ -29,7 +30,11 @@ extends RefCounted
 
 ## Jugador: alias al visual activo que fija `GameConfig.PLAYER_VISUAL`.
 const PLAYER := &"player"
-## Persona (hoja de bit-era, CC0): por defecto desde la especificación de personas.
+## Persona con el pack Hormelz horneado: el visual activo por defecto, con hoja
+## propia por orientación y clips de combate completos.
+const PLAYER_HORMELZ := &"player_hormelz"
+## Persona (hoja de bit-era, CC0): el visual clásico, que se conserva como
+## fallback y para las pruebas del brazo dibujado.
 const PLAYER_HUMAN := &"player_human"
 ## Ninja del pack clásico: se conserva como fallback y para comparar.
 const PLAYER_NINJA := &"player_ninja"
@@ -41,18 +46,18 @@ const NPC_HUMAN := &"npc_human"
 ## Resuelve el alias del jugador al visual activo que fija la configuración.
 static func active_player() -> StringName:
 	var visual: StringName = GameConfig.PLAYER_VISUAL
-	if visual in [PLAYER_HUMAN, PLAYER_NINJA]:
+	if visual in [PLAYER_HORMELZ, PLAYER_HUMAN, PLAYER_NINJA]:
 		return visual
 	GameLogger.warning(
-		"Visual de jugador desconocido: %s; se usa el humano" % visual,
+		"Visual de jugador desconocido: %s; se usa el Hormelz" % visual,
 		"ActorVisualCatalog"
 	)
-	return PLAYER_HUMAN
+	return PLAYER_HORMELZ
 
 
 static func ids() -> Array[StringName]:
 	return [
-		PLAYER, PLAYER_NINJA,
+		PLAYER, PLAYER_HORMELZ, PLAYER_NINJA,
 		NpcKind.VANDAL, NpcKind.ROBBER, NpcKind.BRUTE, NpcKind.GANGSTER,
 	]
 
@@ -110,13 +115,53 @@ static func definition_of(id: StringName) -> CharacterVisualDefinition:
 	match id:
 		PLAYER:
 			return definition_of(active_player())
+		PLAYER_HORMELZ:
+			return _hormelz_definition()
 		PLAYER_HUMAN:
 			return _human_definition()
 		PLAYER_NINJA:
 			return _ninja_definition()
 		NpcKind.VANDAL, NpcKind.ROBBER, NpcKind.BRUTE, NpcKind.GANGSTER:
-			return _npc_human_definition()
+			return _npc_hormelz_definition()
 	return null
+
+
+## El Hormelz: la persona del pack MeleeCharacter horneada a 42x44, con una hoja
+## por orientación y los veinticuatro clips medidos (`HormelzVisualData`).
+##
+## No hay filas que escribir: los clips llevan sus cuatro archivos, sus
+## fotogramas y sus pies. Lo que sí se deja en la definición son los datos que
+## no son del dibujo: `attack_row` (0, la celda lineal de su hoja de golpe, la
+## misma que `ATTACK`) y el centro del torso de 26 px para el arco de golpe.
+static func _hormelz_definition() -> CharacterVisualDefinition:
+	var def := CharacterVisualDefinition.new()
+	def.id = PLAYER_HORMELZ
+	def.sheet = HormelzVisualData.SHEET
+	def.frame_size = HormelzVisualData.CELL_WIDTH
+	def.frame_height = HormelzVisualData.CELL_HEIGHT
+	def.sheet_clips = HormelzVisualData.sheet_clips()
+	def.attack_row = 0
+	def.attack_frames = 15
+	def.attack_fps = 68.0
+	def.torso_offset = Vector2(0.0, -14.0)
+	# Las hojas por orientación dibujan el golpe con las dos manos en su arte:
+	# ni espejos ni alternancia. `PunchArm` no pinta nada (el cuerpo tiene su
+	# propio puñetazo), así que los colores del brazo quedan sin usar.
+	def.mirror_side = false
+	def.alternate_attack = false
+	return def
+
+
+## Los enemigos: la misma persona que el jugador, con un id propio.
+##
+## Es la definición del Hormelz con otro `id`, a propósito y no por ahorrar
+## código: así los cuatro tipos caminan, golpean y mueren con el mismo recorte
+## que el protagonista sin que nadie tenga que mantener dos listas. Si la hoja
+## del jugador cambia, los enemigos cambian con ella.
+static func _npc_hormelz_definition() -> CharacterVisualDefinition:
+	var def := _hormelz_definition()
+	def.id = NPC_HUMAN
+	return def
 
 
 ## La persona: hoja de bit-era (CC0), 64x128 = 4x8 de 16 px.
@@ -154,18 +199,6 @@ static func _human_definition() -> CharacterVisualDefinition:
 	def.punch_skin = Color("e9f092")
 	def.punch_glove = Color.WHITE
 	def.punch_outline = Color.BLACK
-	return def
-
-
-## Los enemigos: la misma persona que el jugador, con un id propio.
-##
-## Es la definición de la persona con otro `id`, a propósito y no por ahorrar
-## código: así los cuatro tipos caminan, golpean y mueren con el mismo recorte que
-## el protagonista sin que nadie tenga que mantener dos listas de filas. Si la hoja
-## de la persona cambia de rejilla, los enemigos cambian con ella.
-static func _npc_human_definition() -> CharacterVisualDefinition:
-	var def := _human_definition()
-	def.id = NPC_HUMAN
 	return def
 
 
