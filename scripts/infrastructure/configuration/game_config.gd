@@ -57,6 +57,39 @@ const INVULNERABILITY_TIME := 0.6
 ## Si cambia el clip de `ATTACK`, cambia este número: `tests/unit/test_actor_sprite`
 ## compara los dos contra la misma fórmula.
 const ATTACK_RECOVERY := 0.23
+## Ritmo al que se calibran los ataques contra los frames de las hojas (sección 12).
+##
+## Los clips de combate del pack se hornean y se reproducen a 68 fps: a ese ritmo
+## se contaron los frames de cada golpe y su frame de contacto. Si cambia, cambian
+## las tres fases de todos los ataques, así que las calcula `AttackDefinition`
+## a partir de los frames medidos y aquí no hay números sueltos de fases.
+const ATTACK_COMBAT_FPS := 68.0
+## Fotogramas de ventana de impacto y cuántos caen antes del frame de contacto
+## (secciones 10 y 12). La ventana es simétrica alrededor del contacto: cubre el
+## frame en el que el golpe pega y dos más a cada lado.
+##
+## OJO con el 5: no es un gusto estético. El motor solo empieza a detectar
+## solapes en el frame siguiente a encender `monitoring` (`HitboxSensor` usa
+## `set_deferred`) y la física corre a 60 Hz mientras los clips van a 68: con
+## tres fotogramas la ventana duraba 44 ms, que son 2,6 frames de física, y el
+## golpe dependía de si el solape llegaba a computarse antes que el cierre. Con
+## cinco dura 74 ms (4,4 frames de física) y se registra siempre. Los tiempos
+## totales de los ataques no cambian: la ventana se ensancha dentro del
+## recovery, no hacia fuera.
+const ATTACK_ACTIVE_FRAMES := 5
+const ATTACK_CONTACT_LEAD_FRAMES := 2
+## Buffer de entrada (sección 22): piden 80-150 ms y se llevan 120. Con el jab
+## de 0,22 s deja una ventana de 0,1 s para encadenar: ni tan corto que exija un
+## timing de robot ni tan largo que dos pulsaciones distintas cuenten como una.
+const COMBO_BUFFER_TIME := 0.12
+## Multiplicadores de movimiento mientras dura cada familia de ataque
+## (sección 14): los ganchos aguantan más el paso que los jabs, y la cruzada y
+## el codo casi no dejan avanzar. Vivir en `GameConfig` y no en el catálogo
+## permite reajustar el reparto entero sin tocar datos de ataques.
+const ATTACK_MOVE_MULT_JAB := 0.65
+const ATTACK_MOVE_MULT_HOOK := 0.55
+const ATTACK_MOVE_MULT_HEAVY := 0.25
+const ATTACK_MOVE_MULT_KICK := 0.45
 ## Fracción del cooldown durante la que la hitbox está activa. El golpe se registra
 ## en un instante concreto, no durante todo el cooldown.
 const HITBOX_ACTIVE_RATIO := 0.35

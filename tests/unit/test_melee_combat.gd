@@ -25,6 +25,19 @@ func _combat(weapon_id: StringName = WeaponCatalog.STONE) -> MeleeCombat:
 	return MeleeCombat.new(Player.new(1, "Jugador"), WeaponCatalog.create(weapon_id))
 
 
+## Deja la ventana de impacto abierta, avanzando el reloj a mano.
+##
+## Con las fases de la sección 10 un golpe no pega al empezar: arranca en
+## WINDUP y la hitbox se abre al entrar en ACTIVE. Un test que golpeara nada más
+## llamar a `try_attack()` no estaría probando el daño, estaría probando que la
+## ventana estaba cerrada.
+func _open_window(combat: MeleeCombat) -> void:
+	var guard := 0
+	while not combat.is_window_open and combat.is_attacking and guard < 200:
+		combat.advance(DELTA)
+		guard += 1
+
+
 func register() -> Array:
 	return [
 		["un golpe entra en ATTACKING y paga stamina", _attack_enters_state],
@@ -49,6 +62,14 @@ func register() -> Array:
 		["el golpe a puños también se bloquea", _unarmed_is_blocked_too],
 		["la barra de golpe mide contra el golpe en curso", _cooldown_ratio_follows_strike],
 		["el fin del golpe no depende del estado del jugador", _finished_survives_a_state_change],
+		["el golpe recorre sus tres fases en orden", _phases_run_in_order],
+		["la ventana se abre y se cierra una sola vez", _window_events_fire_once],
+		["una pulsación temprana es BUSY, no se guarda", _early_press_is_busy],
+		["una pulsación al final encadena sola", _buffered_input_continues_the_combo],
+		["sin entrada guardada la cadena se reinicia", _chain_resets_without_buffer],
+		["las tres familias empiezan por su primer ataque", _families_start_with_their_own_attack],
+		["los ataques caros cuestan y pegan más", _stronger_attacks_cost_and_hit_more],
+		["el movimiento se limita mientras dura el golpe", _movement_multiplier_follows_the_attack],
 	]
 
 
@@ -135,6 +156,7 @@ func _strike_uses_formula(ctx: ScriptTestContext) -> void:
 	combat.target_hit.connect(func(_t: Object, damage: float) -> void: hits.append(damage))
 
 	combat.try_attack()
+	_open_window(combat)
 	var count := combat.strike([target])
 
 	ctx.check_equal(count, 1, "un objetivo golpeado")
@@ -252,6 +274,10 @@ func _dead_target_ignored(ctx: ScriptTestContext) -> void:
 	var target := Dummy.new()
 	target.is_dead = true
 	combat.try_attack()
+	# La ventana abierta, para que el test mire el filtro de objetivos y no el
+	# cierre de la hitbox: si no se abre, el 0 del `strike` no dice nada de
+	# los muertos.
+	_open_window(combat)
 	ctx.check_equal(combat.strike([target, null, 7]), 0, "solo se ignoran los inválidos")
 
 
@@ -321,8 +347,8 @@ func _unarmed_uses_own_rules(ctx: ScriptTestContext) -> void:
 	ctx.check_equal(windows.size(), 1, "avisa del golpe")
 	ctx.check_almost_equal(
 		windows[0] if not windows.is_empty() else 0.0,
-		GameConfig.WEAPON_UNARMED_COOLDOWN * GameConfig.HITBOX_ACTIVE_RATIO,
-		"la ventana sale del cooldown de los puños, no del del cuchillo"
+		AttackCatalog.of(AttackCatalog.LEFT_JAB).active_time,
+		"la ventana la pone el ataque (sección 10), no el cooldown del arma"
 	)
 	ctx.check_almost_equal(
 		combat.cooldown_ratio, 1.0, "el cooldown es el de los puños"
@@ -340,11 +366,13 @@ func _unarmed_hits_softer(ctx: ScriptTestContext) -> void:
 	var target := Dummy.new(60.0, 0.0)
 	var combat := _combat(WeaponCatalog.KNIFE)
 	combat.try_attack(Vector2.RIGHT, true)
+	_open_window(combat)
 	combat.strike([target], true)
 	var fists := 60.0 - target.health.current
 
 	var armed_combat := _combat(WeaponCatalog.KNIFE)
 	armed_combat.try_attack(Vector2.RIGHT)
+	_open_window(armed_combat)
 	armed_combat.strike([Dummy.new(60.0, 0.0)], false)
 	var with_knife := GameConfig.WEAPON_KNIFE_DAMAGE
 
@@ -389,3 +417,222 @@ func _cooldown_ratio_follows_strike(ctx: ScriptTestContext) -> void:
 	ctx.check_almost_equal(
 		combat.cooldown_ratio, 0.5, "y baja con el cooldown de los puños"
 	)
+
+
+## Las tres fases de la sección 10 son lo que hace que un golpe no pegue desde
+## el primer fotograma. Se comprueban con el reloj a mano y por los dos lados:
+## la fase que dice el código y la hitbox que se abre y se cierra.
+func _phases_run_in_order(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var phases: Array[String] = []
+	combat.phase_changed.connect(
+		func(previous: int, current: int) -> void:
+			phases.append("%s->%s" % [CombatState.name_of(previous), CombatState.name_of(current)])
+	)
+
+	ctx.check(combat.try_attack(), "el golpe sale")
+	ctx.check_equal(combat.phase, CombatState.Kind.WINDUP, "empieza en WINDUP")
+	ctx.check(not combat.is_window_open, "y con la hitbox todavía apagada")
+
+	var jab := AttackCatalog.of(AttackCatalog.LEFT_JAB)
+	combat.advance(jab.startup_time - 0.001)
+	ctx.check_equal(combat.phase, CombatState.Kind.WINDUP, "dentro del arranque sigue en WINDUP")
+	ctx.check(not combat.is_window_open, "la ventana no se adelanta")
+
+	combat.advance(0.002)
+	ctx.check_equal(combat.phase, CombatState.Kind.ACTIVE, "cumplido el arranque pasa a ACTIVE")
+	ctx.check(combat.is_window_open, "y ahí se abre la hitbox")
+
+	combat.advance(jab.active_time)
+	ctx.check_equal(combat.phase, CombatState.Kind.RECOVERY, "después viene RECOVERY")
+	ctx.check(not combat.is_window_open, "con la ventana ya cerrada")
+
+	combat.advance(jab.recovery_time)
+	ctx.check_equal(combat.phase, CombatState.Kind.FREE, "y acaba en FREE")
+	ctx.check(not combat.is_attacking, "sin golpe en curso")
+	ctx.check_equal(
+		phases,
+		["FREE->WINDUP", "WINDUP->ACTIVE", "ACTIVE->RECOVERY", "RECOVERY->FREE"],
+		"las cuatro fases, en orden y sin saltos"
+	)
+
+
+## Una sola apertura y un solo cierre por golpe, aunque el avance del reloj se
+## salte enteras las fases: si un delta enorme salta WINDUP -> FREE, la ventana
+## tiene que abrirse y cerrarse dentro del mismo `advance()` o un golpe rápido
+## registrado contra el enemigo habría quedado sin encender la hitbox.
+func _window_events_fire_once(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var opens: Array[String] = []
+	var closes: Array[String] = []
+	combat.attack_window_opened.connect(func() -> void: opens.append("abierta"))
+	combat.attack_window_closed.connect(func() -> void: closes.append("cerrada"))
+
+	ctx.check(combat.try_attack(), "el golpe sale")
+	combat.advance(
+		AttackCatalog.of(AttackCatalog.LEFT_JAB).duration + GameConfig.WEAPON_STONE_COOLDOWN
+	)
+
+	ctx.check_equal(opens, ["abierta"], "una sola apertura por golpe")
+	ctx.check_equal(closes, ["cerrada"], "y un solo cierre")
+	ctx.check(not combat.is_attacking, "y el golpe ha terminado")
+
+
+## Una pulsación lejos del final del golpe es un intento de atacar ahora mismo, no
+## una entrada para más tarde (sección 22). Guardarla sería aceptar pulsaciones
+## a ciegas y encadenarían por accidente.
+func _early_press_is_busy(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var reasons: Array[StringName] = []
+	combat.attack_rejected.connect(func(reason: StringName) -> void: reasons.append(reason))
+
+	ctx.check(combat.try_attack(), "el primer golpe sale")
+	combat.advance(0.02)
+
+	ctx.check(not combat.try_attack(), "una pulsación temprana no encadena")
+	ctx.check_equal(reasons, [MeleeCombat.REASON_BUSY], "se rechaza como BUSY en vez de guardarse")
+	ctx.check_equal(combat.combo_index, 0, "y el índice no se mueve")
+
+
+## El corazón del buffer: pulsar en los últimos 0,12 s guarda la entrada en
+## silencio y el golpe siguiente sale solo, con el cooldown saltado. Si esto
+## falla, encadenar se convierte en un timing de milisegundos.
+func _buffered_input_continues_the_combo(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var reasons: Array[StringName] = []
+	# Se mira `combo_changed` y no `attack_started` dentro de una lambda: una
+	# lambda que captura `combat` deja a `combat` colgando de su propia señal, y
+	# ese ciclo no lo recolecta nadie (la suite entera se iría con 17 objetos
+	# fugados por una sola conexión). Aquí solo se captura el array de pasos.
+	var steps: Array[String] = []
+	combat.attack_rejected.connect(func(reason: StringName) -> void: reasons.append(reason))
+	combat.combo_changed.connect(
+		func(index: int, family: StringName) -> void:
+			steps.append("%s:%d" % [family, index])
+	)
+
+	ctx.check(combat.try_attack(), "el jab izquierdo sale")
+	ctx.check_equal(combat.current_attack_id, AttackCatalog.LEFT_JAB, "y es el primero de la cadena")
+	ctx.check_equal(steps, ["light:0"], "y lo avisa con su índice")
+
+	var jab := AttackCatalog.of(AttackCatalog.LEFT_JAB)
+	combat.advance(jab.duration - GameConfig.COMBO_BUFFER_TIME + 0.01)
+	ctx.check(combat.is_attacking, "el primer golpe sigue en curso")
+	ctx.check(not combat.try_attack(), "la pulsación guardada no arranca sola")
+	ctx.check_equal(reasons, [], "y no se queja: se guarda en silencio")
+
+	combat.advance(GameConfig.COMBO_BUFFER_TIME + DELTA)
+	ctx.check_equal(
+		combat.current_attack_id, AttackCatalog.RIGHT_JAB, "al terminar arranca el segundo"
+	)
+	ctx.check_equal(combat.combo_index, 1, "con el índice avanzado")
+	ctx.check_equal(steps, ["light:0", "light:1"], "los dos pasos de la cadena, en orden")
+	ctx.check_equal(reasons, [], "sin ningún rechazo")
+
+
+## Sin entrada guardada, la cadena se reinicia a cero (sección 22). Si no,
+## dejar de pulsar y volver a empezar pegaría un gancho suelto de cuatro
+## golpes más adelante en la secuencia.
+func _chain_resets_without_buffer(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	ctx.check(combat.try_attack(), "el jab sale")
+
+	var jab := AttackCatalog.of(AttackCatalog.LEFT_JAB)
+	combat.advance(jab.duration + GameConfig.WEAPON_STONE_COOLDOWN + DELTA)
+
+	ctx.check(not combat.is_attacking, "el golpe terminó sin nadie esperando")
+	ctx.check_equal(combat.combo_index, 0, "la cadena volvió al principio")
+	ctx.check_equal(combat.combo_family, &"", "y no se quedó fijada a la familia")
+
+	ctx.check(combat.try_attack(), "vuelve a poder pegar")
+	ctx.check_equal(combat.current_attack_id, AttackCatalog.LEFT_JAB, "y empieza por el jab")
+
+
+## Cada tecla es una cadena con su primer ataque (sección 23): J abre con el
+## jab, K con la cruzada y L con la patada frontal. Si una cadena empezara por
+## el golpe de otra, pulsar K daría la sensación de haber pulsado mal.
+func _families_start_with_their_own_attack(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+
+	ctx.check(combat.try_attack_family(Vector2.RIGHT, AttackCatalog.FAMILY_LIGHT), "ligera")
+	ctx.check_equal(combat.current_attack_id, AttackCatalog.LEFT_JAB, "abre con el jab izquierdo")
+	ctx.check_equal(combat.combo_family, AttackCatalog.FAMILY_LIGHT, "y guarda su familia")
+
+	_finish_and_recover(combat)
+	ctx.check(combat.try_attack_family(Vector2.RIGHT, AttackCatalog.FAMILY_HEAVY), "pesada")
+	ctx.check_equal(combat.current_attack_id, AttackCatalog.STRAIGHT, "abre con la cruzada")
+	ctx.check_equal(combat.combo_family, AttackCatalog.FAMILY_HEAVY, "y guarda su familia")
+
+	_finish_and_recover(combat)
+	ctx.check(combat.try_attack_family(Vector2.RIGHT, AttackCatalog.FAMILY_KICK), "patadas")
+	ctx.check_equal(combat.current_attack_id, AttackCatalog.FRONT_KICK, "abre con la frontal")
+	ctx.check_equal(combat.combo_family, AttackCatalog.FAMILY_KICK, "y guarda su familia")
+
+
+## La sección 29 se paga en stamina y se cobra en vida: un ataque caro cuesta
+## más de la del arma y quita más que el jab, con la misma arma y el mismo
+## objetivo. Si no, todas las cadenas serían intercambiables.
+func _stronger_attacks_cost_and_hit_more(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var before := combat.player.stamina
+	ctx.check(combat.try_attack_family(Vector2.RIGHT, AttackCatalog.FAMILY_HEAVY), "cruzada")
+	var spent := before - combat.player.stamina
+	var jab := AttackCatalog.of(AttackCatalog.LEFT_JAB)
+	var straight := AttackCatalog.of(AttackCatalog.STRAIGHT)
+	ctx.check_almost_equal(
+		spent,
+		GameConfig.WEAPON_STONE_STAMINA + (straight.stamina_cost - jab.stamina_cost),
+		"la stamina es la del arma más la del ataque (sección 20)"
+	)
+
+	var light := _combat()
+	light.try_attack()
+	_open_window(light)
+	var soft := Dummy.new(60.0, 0.0)
+	light.strike([soft])
+	var light_damage := 60.0 - soft.health.current
+
+	var heavy := _combat()
+	heavy.try_attack_family(Vector2.RIGHT, AttackCatalog.FAMILY_HEAVY)
+	_open_window(heavy)
+	var hard := Dummy.new(60.0, 0.0)
+	heavy.strike([hard])
+	var heavy_damage := 60.0 - hard.health.current
+
+	ctx.check(
+		heavy_damage > light_damage,
+		"la cruzada quita más vida que el jab (%.1f > %.1f)" % [heavy_damage, light_damage]
+	)
+	ctx.check(straight.damage > jab.damage, "y sus números de la sección 29 son mayores")
+
+
+## El movimiento no se corta del todo mientras se golpea: la sección 14 pide un
+## multiplicador por familia, y con la cruzada casi no se avanza mientras con
+## el jab se mantiene la mayor parte del paso.
+func _movement_multiplier_follows_the_attack(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	ctx.check_almost_equal(combat.movement_multiplier, 1.0, "sin golpe no se limita nada")
+
+	ctx.check(combat.try_attack(), "el jab sale")
+	ctx.check_almost_equal(
+		combat.movement_multiplier,
+		GameConfig.ATTACK_MOVE_MULT_JAB,
+		"con el jab se conserva la mayor parte del paso (sección 14)"
+	)
+
+	_finish_and_recover(combat)
+	ctx.check(combat.try_attack_family(Vector2.RIGHT, AttackCatalog.FAMILY_HEAVY), "la cruzada")
+	ctx.check_almost_equal(
+		combat.movement_multiplier,
+		GameConfig.ATTACK_MOVE_MULT_HEAVY,
+		"y con la cruzada casi no se arrastra el pie"
+	)
+
+
+## Deja el combate en FREE y con el cooldown consumido, para poder pegar otra
+## vez sin esperar a mano cuánto dura cada golpe.
+func _finish_and_recover(combat: MeleeCombat) -> void:
+	var wait := GameConfig.WEAPON_STONE_COOLDOWN + DELTA
+	if combat.current_attack != null:
+		wait = maxf(wait, combat.current_attack.duration + wait)
+	combat.advance(wait)

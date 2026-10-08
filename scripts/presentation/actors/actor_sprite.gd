@@ -54,6 +54,16 @@ const DEAD := &"dead"
 ## antes de reproducirlo y avisar en vez de quedarse en silencio.
 const KNOWN_CLIPS: Array[StringName] = [WALK, IDLE, ATTACK, DEAD]
 
+
+## ¿Este clip es un golpe?
+##
+## El genérico `ATTACK` o el de cualquier ataque del catálogo: la vista elige el
+## del ataque concreto si la hoja lo trae, así que una comprobación que solo
+## mirara `ATTACK` no vería un cuerpo clavado en `left_jab` — que es el fallo
+## que se quiere cazar cuando se pregunta esto.
+static func is_attack_clip(clip: StringName) -> bool:
+	return clip == ATTACK or AttackCatalog.has_animation(clip)
+
 ## Hoja de la que se recortan los fotogramas.
 var sheet_path: String = ""
 ## Clips definidos para esta hoja. Lo rellena `configure()`.

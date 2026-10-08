@@ -366,7 +366,11 @@ func _player_strikes_npc() -> void:
 	_presenter().set_physics_process(true)
 
 	_context.check(_combat().try_attack(Vector2.RIGHT), "el golpe sale")
-	await _settle(4)
+	# Con las fases (sección 10) el golpe no pega al empezar: arranca en WINDUP y
+	# la hitbox se abre al entrar en ACTIVE, más la fila diferida del `monitoring`.
+	# Doce fotogramas: es cuando la ventana está abierta y el enemigo ya ha recibido
+	# el golpe; con cuatro, la ventana ni siquiera se había abierto.
+	await _settle(12)
 	_presenter().set_physics_process(false)
 
 	_context.check(npc.health.current < before, "el enemigo no perdió vida")
@@ -604,7 +608,9 @@ func _npc_flashes_when_hurt() -> void:
 	var before := npc.health.current
 	_presenter().set_physics_process(true)
 	_context.check(_combat().try_attack(Vector2.RIGHT), "el golpe sale")
-	await _settle(4)
+	# Igual que en la cadena entera: doce fotogramas para que el golpe pase por su
+	# ventana de impacto, que no se abre al empezar la pose (sección 10).
+	await _settle(12)
 	_presenter().set_physics_process(false)
 
 	_context.check(npc.health.current < before, "el enemigo no perdió vida")

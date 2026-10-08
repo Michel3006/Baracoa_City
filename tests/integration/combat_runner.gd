@@ -234,11 +234,33 @@ func _drain_fx(layer: Node2D, limit: int = 120) -> void:
 		waited += 1
 
 
-## Golpea en una dirección y deja la ventana abierta, para poder actuar sobre el
-## objetivo mientras el golpe está en curso.
+## Golpea en una dirección y deja la ventana de impacto abierta, para poder actuar
+## sobre el objetivo mientras el golpe está en curso.
+##
+## OJO: con las fases de la sección 10 un golpe no pega al empezar. Arranca en
+## WINDUP y la hitbox se enciende al entrar en ACTIVE, así que aquí hay que
+## mover el reloj a mano hasta que abra: el presentador está apagado en estos
+## tests, que es quien lo haría en el juego.
 func _attack_toward(direction: Vector2) -> void:
 	_combat().try_attack(direction)
-	await _settle()
+	await _advance_to_window()
+
+
+## Avanza la física, un fotograma por `delta`, hasta que la ventana del golpe en
+## curso se abra. Devuelve `false` si el golpe termina sin llegar a abrirse, que
+## es lo que hace que una prueba falle en vez de pasar por accidente.
+func _advance_to_window(limit: int = 60) -> bool:
+	var waited := 0
+	while _combat().is_attacking and not _combat().is_window_open and waited < limit:
+		_combat().advance(DELTA)
+		await physics_frame
+		waited += 1
+	# Un fotograma más: `HitboxSensor` enciende `monitoring` con `set_deferred`
+	# y solo está visible en el servidor de física a partir del frame siguiente.
+	if _combat().is_window_open:
+		await physics_frame
+		return true
+	return false
 
 
 # --- casos ---
@@ -264,9 +286,15 @@ func _hitbox_activates() -> void:
 	var combat := _combat()
 	_context.check(combat.try_attack(Vector2.RIGHT), "el golpe debería salir")
 	_context.check(combat.is_attacking, "el jugador queda en ATTACKING")
-	# El encendido va diferido: no es visible hasta el siguiente frame.
+	# Durante el arranque (WINDUP) la hitbox tiene que seguir apagada: si se
+	# encendiera al empezar la pose, un golpe lento estaría pegando durante todo
+	# su windup, que es justo lo que la sección 10 prohíbe.
 	await _settle()
-	_context.check(_hitbox().is_active, "la hitbox debe encenderse con el golpe")
+	_context.check(not _hitbox().is_active, "en el arranque la hitbox sigue apagada")
+
+	# El encendido va diferido: no es visible hasta el siguiente frame.
+	_context.check(await _advance_to_window(), "la ventana se abre dentro del golpe")
+	_context.check(_hitbox().is_active, "la hitbox debe encenderse con la ventana")
 	_context.check(_hitbox().monitoring, "y con el monitoreo activo")
 
 

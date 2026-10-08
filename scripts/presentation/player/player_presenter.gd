@@ -19,9 +19,21 @@ const ACTION_ATTACK := &"attack"
 ## manos", y el caso de uso necesita saber cuál de las dos es.
 const ACTION_ATTACK_UNARMED := &"attack_unarmed"
 
+## Las otras dos cadenas (sección 23): K pega la pesada y L las patadas. Van
+## como acciones aparte y no como modificadores, por la misma razón que
+## `ACTION_ATTACK_UNARMED`: el caso de uso necesita saber qué cadena es.
+const ACTION_ATTACK_HEAVY := &"attack_heavy"
+const ACTION_ATTACK_KICK := &"attack_kick"
+
 var _view: PlayerView = null
 var _movement: MovementController = null
 var _combat: MeleeCombat = null
+
+## Velocidad del jugador sin ningún multiplicador. Se guarda al enchufar porque
+## mientras dura un golpe el presentador escribe `move_speed` cada fotograma
+## (sección 14) y multiplicar dos veces sobre el valor ya multiplicado acabaría
+## con el jugador clavado en el segundo golpe.
+var _base_move_speed: float = GameConfig.PLAYER_SPEED
 
 ## Cuerpos ya golpeados en el swing actual, para no machacar al mismo objetivo
 ## mientras la hitbox sigue encendida.
@@ -44,10 +56,12 @@ func setup(view: PlayerView, movement: MovementController, combat: MeleeCombat =
 	if _movement != null:
 		_movement.bind(view)
 		_movement.move_speed = view.move_speed
+		_base_move_speed = view.move_speed
 		_movement.move_performed.connect(_on_move_performed)
 		_movement.direction_changed.connect(_on_direction_changed)
 	if _combat != null:
 		_combat.attack_started.connect(_on_attack_started)
+		_combat.attack_window_opened.connect(_on_attack_window_opened)
 		_combat.attack_window_closed.connect(_on_attack_window_closed)
 		_combat.attack_finished.connect(_on_attack_finished)
 		_combat.weapon_changed.connect(_on_weapon_changed)
@@ -71,6 +85,7 @@ func set_fx_parent(node: Node2D) -> void:
 
 func _physics_process(delta: float) -> void:
 	if _movement != null:
+		_movement.move_speed = _current_move_speed()
 		_movement.move(delta, _movement.intent_from_input())
 	if _combat == null:
 		return
@@ -79,11 +94,32 @@ func _physics_process(delta: float) -> void:
 	_strike_visible_targets()
 
 
-## Traduce las dos teclas de golpe a una llamada del caso de uso.
+## Velocidad a la que se mueve este fotograma (sección 14).
 ##
-## Si el jugador pulsa las dos en el mismo frame manda el golpe con arma: es el que
-## se ve en la mano, y el de puños es el que se usa cuando no hay nada mejor.
+## El multiplicador lo manda el ataque en curso: mientras dura un jab el
+## jugador conserva el 65 % del paso y con la cruzada apenas arrastra los pies.
+## Sin golpe en curso devuelve la marcha normal, que es un 100 % exacto.
+func _current_move_speed() -> float:
+	if _combat == null:
+		return _base_move_speed
+	return _base_move_speed * _combat.movement_multiplier
+
+
+## Traduce las teclas de golpe a una llamada del caso de uso.
+##
+## Hay tres cadenas y dos formas de pegar a puños, y las cinco cosas se dicen
+## con acciones distintas: el presentador solo traduce, la decisión de si sale o
+## no (fases, buffer, stamina) es del caso de uso.
+##
+## Si el jugador pulsa varias en el mismo frame manda la primera que aparezca:
+## las patadas, que son las que más comprometen, y después la cadena pesada.
 func _read_attack_input() -> void:
+	if Input.is_action_just_pressed(ACTION_ATTACK_KICK):
+		_combat.try_attack_family(_facing(), AttackCatalog.FAMILY_KICK)
+		return
+	if Input.is_action_just_pressed(ACTION_ATTACK_HEAVY):
+		_combat.try_attack_family(_facing(), AttackCatalog.FAMILY_HEAVY)
+		return
 	if Input.is_action_just_pressed(ACTION_ATTACK):
 		_combat.try_attack(_facing(), false)
 		return
@@ -143,13 +179,30 @@ func _on_attack_started(weapon: Weapon, direction: Vector2, _window: float) -> v
 	_struck_unarmed = WeaponCatalog.is_unarmed(weapon)
 	if _view != null:
 		_view.set_facing(direction)
-		_view.begin_attack(weapon)
+		# La animación la elige el ataque: el clip de su id si la hoja lo trae y,
+		# si no, el de golpe genérico. La duración también la pone el ataque
+		# (`AttackDefinition.duration`), que es exactamente lo que dura su clip.
+		_view.begin_attack(
+			weapon, _combat.current_attack_id, _combat.current_duration
+		)
 	# A puños no sale arco: no hay nada que corte el aire. El arco es de la hoja del
 	# arma, así que con las manos vacías lo único que se ve es la animación de golpe
 	# del personaje, que es justo la diferencia que se pidió entre las dos formas de
 	# pegar.
 	if not _struck_unarmed:
 		_spawn_slash(direction)
+
+
+## Enciende la hitbox del jugador (sección 16).
+##
+## No se enciende en `begin_attack`: el golpe empieza en WINDUP y la ventana de
+## impacto llega después, cuando el frame de contacto está a punto de caer. Si
+## la hitbox se encendiera al empezar la pose, un golpe lento estaría golpeando
+## durante todo su windup, que es justo lo que la sección 10 prohíbe.
+func _on_attack_window_opened() -> void:
+	_struck.clear()
+	if _view != null:
+		_view.start_hitbox()
 
 
 ## Suelta el arco por delante del cuerpo, a la altura del torso.

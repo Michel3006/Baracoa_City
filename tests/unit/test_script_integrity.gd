@@ -56,9 +56,12 @@ func _global_classes_present(ctx: ScriptTestContext) -> void:
 	var required: PackedStringArray = [
 		"ActorSprite",
 		"ActorVisualCatalog",
+		"AttackCatalog",
+		"AttackDefinition",
 		"CharacterStats",
 		"CharacterVisualDefinition",
 		"CollisionLayers",
+		"CombatState",
 		"DamageRules",
 		"GameConfig",
 		"GameSession",

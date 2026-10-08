@@ -179,8 +179,14 @@ func facing() -> Vector2:
 	return _facing
 
 
-## Inicia la pose de golpe y enciende la hitbox. La duración la lleva
-## `MeleeCombat`; aquí solo se guarda el progreso 0..1 que se dibuja.
+## Inicia la pose de golpe. La duración la lleva `MeleeCombat`; aquí solo se
+## guarda el progreso 0..1 que se dibuja.
+##
+## NO enciende la hitbox: el golpe empieza en WINDUP y la ventana de impacto
+## llega después, al entrar en ACTIVE (sección 10). Quien enciende es el
+## presentador con `start_hitbox()` cuando el caso de uso emite
+## `attack_window_opened`. Así un golpe lento no está pegando durante todo su
+## arranque.
 ##
 ## `attack_id` es el ataque concreto (izquierda, cruzada, patada...): si la hoja
 ## trae su animación, se reproduce esa; si no, cae al clip estándar de ataque.
@@ -194,7 +200,6 @@ func begin_attack(weapon: Weapon = null, attack_id: StringName = &"", duration: 
 		set_weapon(weapon)
 	if hitbox != null:
 		hitbox.face(_facing)
-		hitbox.set_active(true)
 	# El brazo dibujado no pinta nada en ninguna hoja: el cuerpo tiene su propio
 	# puñetazo. Se cierra por si acaso quedó activo de una versión anterior.
 	if _punch != null:
@@ -205,6 +210,16 @@ func begin_attack(weapon: Weapon = null, attack_id: StringName = &"", duration: 
 	if _actor != null:
 		_actor.play(_attack_clip, true)
 	_refresh_animation()
+
+
+## Enciende la hitbox: es la señal de que la ventana de impacto está abierta.
+##
+## La llama el presentador con `attack_window_opened` y se apaga con
+## `stop_hitbox()` al cerrarse la ventana, de modo que la hitbox y la ventana
+## del caso de uso son la misma cosa vista desde los dos lados.
+func start_hitbox() -> void:
+	if hitbox != null:
+		hitbox.set_active(true)
 
 
 ## Apaga la hitbox sin cortar la animación: el golpe ya se ha registrado.

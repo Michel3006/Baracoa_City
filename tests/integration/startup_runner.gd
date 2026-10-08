@@ -57,6 +57,7 @@ func _run() -> void:
 	await _check("con la zona despejada nada se ata al jugador", _nothing_blocks_the_player)
 	await _check("a puños el cuerpo usa el brazo dibujado", _unarmed_punch_uses_punch_arm)
 	await _check("la barra de golpe sigue el cooldown", _attack_bar_follows_the_cooldown)
+	await _check("el golpe usa la animación de su ataque", _attack_uses_its_own_animation)
 
 	_report()
 	quit(0 if _failed == 0 else 1)
@@ -548,7 +549,7 @@ func _attack_ends_and_body_walks_again() -> void:
 		"el reloj del golpe sigue corriendo %.2f s después de que el golpe acabara" % player.swing_elapsed()
 	)
 	_context.check(
-		actor.current_clip() != ActorSprite.ATTACK,
+		not ActorSprite.is_attack_clip(actor.current_clip()),
 		"terminado el golpe el clip sigue siendo %s" % str(actor.current_clip())
 	)
 
@@ -578,10 +579,11 @@ func _attack_ends_and_body_walks_again() -> void:
 		"después del golpe el jugador no se mueve a la derecha (%s): o el golpe le ha dejado clavado o tiene pared delante" % str(player.global_position)
 	)
 	if moved > 0.0:
+		var stuck: int = _attack_clip_frames(clips_moving)
 		_context.check(
-			not clips_moving.has(str(ActorSprite.ATTACK)),
-			"después del golpe, al andar, sale el clip de golpe %d fotogramas de %d" % [
-				int(clips_moving.get(str(ActorSprite.ATTACK), 0)), clips_moving.size()
+			stuck == 0,
+			"después del golpe, al andar, sale un clip de golpe %d fotogramas de %d: %s" % [
+				stuck, clips_moving.size(), str(clips_moving.keys())
 			]
 		)
 		_context.check(
@@ -626,7 +628,7 @@ func _walk_after_attack_does_not_replay_the_swing() -> void:
 			await physics_frame
 			var clip := str(actor.current_clip())
 			clips[clip] = int(clips.get(clip, 0)) + 1
-			if clip == ActorSprite.ATTACK:
+			if ActorSprite.is_attack_clip(StringName(clip)):
 				attack_frames += 1
 				# El clip del golpe no se repite, así que su fotograma solo avanza.
 				if previous_attack_frame >= 0 and actor.frame <= previous_attack_frame:
@@ -763,7 +765,7 @@ func _turning_mid_swing_does_not_restart_the_clip() -> void:
 		if _frame == turn_at:
 			Input.action_press(&"move_up", 1.0)
 		await physics_frame
-		if actor.current_clip() != ActorSprite.ATTACK:
+		if not ActorSprite.is_attack_clip(actor.current_clip()):
 			continue
 		# Solo retroceder es reiniciar. Un clip que no se repite se queda clavado en su
 		# ultimo fotograma (`ActorSprite._process()`), asi que dos fotogramas seguidos
@@ -845,7 +847,7 @@ func _swing_closes_without_the_signal() -> void:
 		"sin que nadie llame a end_attack() la pose sigue abierta %.2f s después" % player.swing_elapsed()
 	)
 	_context.check(
-		actor.current_clip() != ActorSprite.ATTACK,
+		not ActorSprite.is_attack_clip(actor.current_clip()),
 		"sin señal, el clip se queda en %s" % str(actor.current_clip())
 	)
 	if not clips_moving.is_empty():
@@ -1047,8 +1049,8 @@ func _unarmed_punch_uses_punch_arm() -> void:
 	if _context.check(player.is_swinging(), "no hay swing a puños"):
 		var clip := actor.current_clip()
 		_context.check(
-			clip == ActorSprite.ATTACK,
-			"a puños el cuerpo debe usar el clip ATTACK y está en %s" % str(clip)
+			ActorSprite.is_attack_clip(clip),
+			"a puños el cuerpo debe usar un clip de golpe y está en %s" % str(clip)
 		)
 		var is_active := false
 		if punch != null:
@@ -1059,6 +1061,68 @@ func _unarmed_punch_uses_punch_arm() -> void:
 		_context.check(not is_active, "el brazo dibujado por código no debe estar activo cuando se usa la animación del cuerpo")
 
 	await _settle(int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 6)
+
+
+## Cuántos fotogramas de un recuento por clip son clips de golpe.
+##
+## El golpe ya no es un clip único: cada ataque tiene el suyo (`left_jab`,
+## `straight`, `front_kick`...), así que mirar solo `ATTACK` dejaría pasar un
+## cuerpo clavado en la pose de un jab mientras la prueba veía "no es attack,
+## correcto".
+func _attack_clip_frames(clips: Dictionary) -> int:
+	var total := 0
+	for clip: String in clips:
+		if ActorSprite.is_attack_clip(StringName(clip)):
+			total += int(clips[clip])
+	return total
+
+
+## Cada golpe se anima con su propio clip (sección 11), no con uno genérico.
+##
+## La hoja del pack trae una animación por ataque, así que un jab tiene que
+## verse como jab y una cruzada como cruzada, aunque por dentro los dos sean
+## "un ataque de la cadena". Si esto falla, los doce golpes se ven idénticos y
+## el jugador no puede distinguir una patada de un jab mirando la pantalla.
+func _attack_uses_its_own_animation() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
+		return
+	var combat: MeleeCombat = _game().session.combat
+	if not _context.check(combat != null, "la sesión no tiene combate"):
+		return
+
+	# Partida de cero: si el golpe anterior deja cooldown, este caso diría que la
+	# animación no cambia cuando en realidad no ha salido ningún golpe.
+	combat.grant_invulnerability(0.0)
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	_game().session.player.restore_stamina(float(GameConfig.PLAYER_MAX_STAMINA))
+	await _settle(2)
+
+	_context.check(
+		actor.has_clip(&"left_jab") and actor.has_clip(&"straight"),
+		"la hoja no trae los clips de los ataques: el caso no mide nada"
+	)
+
+	Input.action_press(&"attack", 1.0)
+	await _settle(2)
+	Input.action_release(&"attack")
+	_context.check_equal(
+		actor.current_clip(), &"left_jab",
+		"el jab izquierdo se anima como jab izquierdo"
+	)
+
+	await _settle(int(ceil(GameConfig.DEFAULT_ATTACK_COOLDOWN * 60.0)) + 12)
+	Input.action_press(&"attack_heavy", 1.0)
+	await _settle(2)
+	Input.action_release(&"attack_heavy")
+	_context.check_equal(
+		actor.current_clip(), &"straight",
+		"la cruzada se anima como cruzada, no como el jab de antes"
+	)
+	await _settle(int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 12)
 
 
 func _names(nodes: Array) -> String:
