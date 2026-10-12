@@ -45,6 +45,7 @@ func _run() -> void:
 	await _check("el jugador de pantalla está conectado a los casos de uso", _player_wired)
 	await _check("la cámara activa sigue al jugador de los casos de uso", _camera_follows_player)
 	await _check("pulsar una tecla mueve al jugador que se ve", _player_moves_on_input)
+	await _check("la entrada de defensa llega al combate", _defense_input_reaches_the_combat)
 	await _check("al andar, el arma va en la mano y no se mueve al parar", _weapon_follows_the_hand)
 	await _check("el arma no tapa las piernas ni sale tumbada", _weapon_clears_the_legs)
 	await _check("al parar, el personaje sigue mirando hacia donde caminaba", _facing_kept_on_stop)
@@ -246,6 +247,75 @@ func _player_moves_on_input() -> void:
 		"dominio y vista se han desalineado: %s frente a %s" % [
 			str(domain.position), str(player.global_position)
 		]
+	)
+
+
+## La defensa no es un atajo del dominio: las teclas tienen que llegar hasta el
+## cuerpo de combate. Rodar se dispara con una pulsación y cambia el estado del
+## jugador, y la guardia se mantiene mientras se pulsa y aguanta un golpe de
+## frente pagando stamina, no vida. Es el mismo tramo entrada -> cuerpo que
+## `_player_moves_on_input`, pero para las teclas nuevas.
+##
+## Se despeja la zona primero, como los casos que miden poses: medir la guardia
+## con un enemigo golpeando al jugador es medir otra cosa. El pulso va con
+## `action_press`, que `is_action_just_pressed` sí ve en el siguiente fotograma
+## físico (comprobado; `parse_input_event` no entrega en headless).
+func _defense_input_reaches_the_combat() -> void:
+	var players := _players()
+	if not _context.check(
+		players.size() == 1,
+		"no se puede comprobar la defensa: hay %d jugadores" % players.size()
+	):
+		return
+	_clear_zone()
+	var player: PlayerView = players[0]
+	var combat: MeleeCombat = _game().session.combat
+
+	# El caso anterior caminó con los enemigos vivos y el jugador puede haber
+	# recibido un golpe al final: esperar a que el trance (reacción, aturdimiento
+	# e invulnerabilidad) expire del todo antes de medir la entrada, o `try_dodge`
+	# se rechaza.
+	await _settle(25)
+
+	Input.action_press(&"dodge")
+	await _settle(1)
+	Input.action_release(&"dodge")
+	# El presentador arranca la rodada al leer la pulsación, en el tramo del
+	# fotograma que cae después de la señal de `physics_frame`: comprobarlo un
+	# fotograma más tarde.
+	await _settle(1)
+	_context.check(
+		_game().session.player.state == PlayerState.Kind.DODGING,
+		"pulsar dodge hace rodar al jugador"
+	)
+	_context.check(
+		player.reaction_clip() == &"", "la rodada no pisa ninguna pose previa"
+	)
+
+	# La rodada dura su gesto entero (16 fotogramas a 68 fps); se espera a que
+	# termine para levantar la guardia, que no puede subir rodando.
+	await _settle(20)
+	_context.check(not combat.is_dodging, "y la rodada termina sola")
+
+	Input.action_press(&"block")
+	await _settle(1)
+	_context.check(combat.is_blocking, "mantener block levanta la guardia")
+
+	# El jugador mira al este (lo dejó el caso anterior): un golpe desde el oeste
+	# es de frente.
+	var stamina_before: float = _game().session.player.stamina
+	var health_before: float = _game().session.player.health.current
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.LEFT)
+	Input.action_release(&"block")
+
+	_context.check_equal(dealt, 0.0, "y de frente el golpe no entra")
+	_context.check_equal(
+		_game().session.player.health.current, health_before, "sin perder vida"
+	)
+	_context.check_equal(
+		stamina_before - _game().session.player.stamina,
+		GameConfig.BLOCK_STAMINA_COST,
+		"pagando la stamina de la guardia"
 	)
 
 
@@ -470,6 +540,7 @@ func _facing_kept_on_stop() -> void:
 	var actor := player.get_node_or_null("Actor") as ActorSprite
 	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
 		return
+	_clear_zone()
 	var def := ActorVisualCatalog.definition_of(ActorVisualCatalog.PLAYER)
 	var sheet_based := not def.sheet_clips.is_empty()
 	var rows: Array[int] = [
@@ -518,6 +589,21 @@ func _facing_kept_on_stop() -> void:
 		)
 
 
+## Despeja la zona de enemigos vivos para los casos que miden la pose del jugador.
+##
+## Un enemigo que llega a pegarle durante la medición la tapa con la reacción al
+## golpe (`hit_light`/`hit_body`/`hit_head`): eso está bien en el juego, pero aquí
+## convierte "qué pose tiene el jugador al parar" en una carrera contra la IA. Se
+## matan los agentes para que la medición dependa solo de lo que se está probando.
+func _clear_zone() -> void:
+	var game := _game()
+	if game.session == null or game.session.npcs == null:
+		return
+	for agent in game.session.npcs.agents:
+		if not agent.npc.is_dead:
+			agent.npc.take_damage(agent.npc.health.maximum)
+
+
 ## Un golpe se acaba y el cuerpo vuelve a su animación de siempre.
 ##
 ## Este caso es la defensa del fallo más caro que ha tenido el movimiento. La señal
@@ -536,6 +622,7 @@ func _attack_ends_and_body_walks_again() -> void:
 	var actor := player.get_node_or_null("Actor") as ActorSprite
 	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
 		return
+	_clear_zone()
 
 	Input.action_press(&"attack", 1.0)
 	await _settle(2)

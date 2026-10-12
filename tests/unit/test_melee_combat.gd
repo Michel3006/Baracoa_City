@@ -21,6 +21,28 @@ class Dummy extends RefCounted:
 		return health.apply_damage(amount)
 
 
+## Objetivo de mentira que además sabe de la entrada rica: expone dónde está (para
+## el empuje) y guarda lo que le ha llegado con `take_attack`. Sirve para comprobar
+## que el golpe del jugador elige esa puerta cuando existe.
+class RichDummy extends RefCounted:
+	var stats: CharacterStats
+	var health: Health
+	var is_dead: bool = false
+	var position: Vector2 = Vector2.ZERO
+	var received: Array = []
+
+	func _init(health: float = 30.0, defense: float = 0.0) -> void:
+		stats = CharacterStats.new({"defense": defense})
+		self.health = Health.new(health)
+
+	func take_damage(amount: float) -> float:
+		return health.apply_damage(amount)
+
+	func take_attack(attack: AttackDefinition, amount: float, impact: Vector2) -> float:
+		received.append({"attack": attack, "amount": amount, "impact": impact})
+		return health.apply_damage(amount)
+
+
 func _combat(weapon_id: StringName = WeaponCatalog.STONE) -> MeleeCombat:
 	return MeleeCombat.new(Player.new(1, "Jugador"), WeaponCatalog.create(weapon_id))
 
@@ -70,6 +92,18 @@ func register() -> Array:
 		["las tres familias empiezan por su primer ataque", _families_start_with_their_own_attack],
 		["los ataques caros cuestan y pegan más", _stronger_attacks_cost_and_hit_more],
 		["el movimiento se limita mientras dura el golpe", _movement_multiplier_follows_the_attack],
+		["una guardia de frente para el golpe y paga stamina", _blocking_soaks_a_front_hit],
+		["un golpe por la espalda entra aunque haya guardia", _blocking_does_not_stop_a_back_hit],
+		["sin stamina la guardia se rompe y el golpe entra entero", _guard_break_hurts_and_staggers],
+		["la guardia no sube atacando, rodando ni aturdido", _block_refuses_when_busy],
+		["la rodada abre su ventana y cuesta stamina", _dodge_has_a_window_and_a_cost],
+		["rodando el golpe pasa de largo", _dodge_evades_the_hit],
+		["la rodada no sale aturdido, sin stamina ni en cadena", _dodge_refuses_when_busy],
+		["recibir un ataque levanta su reacción", _attack_raises_a_hit_reaction],
+		["un ataque que aturde deja al jugador sin andar", _heavy_attack_staggers],
+		["el golpe empuja y el empuje se apaga solo", _knockback_pushes_and_decays],
+		["un golpe a mitad de ataque corta el ataque", _a_hit_interrupts_the_attack],
+		["golpear prefiere la entrada rica del objetivo", _strike_prefers_rich_targets],
 	]
 
 
@@ -636,3 +670,323 @@ func _finish_and_recover(combat: MeleeCombat) -> void:
 	if combat.current_attack != null:
 		wait = maxf(wait, combat.current_attack.duration + wait)
 	combat.advance(wait)
+
+
+# --- F5: defensa y reacciones ---
+
+## La guardia solo para lo que viene de frente (sección 31) y se paga con stamina,
+## no con vida. `impact` es la dirección del empuje (atacante -> defensor), así que
+## de frente va contra la mirada.
+func _blocking_soaks_a_front_hit(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	combat.player.direction = Vector2.DOWN
+	var results: Array[StringName] = []
+	combat.attack_received.connect(
+		func(result: StringName, _attack: AttackDefinition) -> void: results.append(result)
+	)
+
+	combat.set_blocking(true)
+	ctx.check(combat.is_blocking, "la guardia sube")
+
+	var stamina_before := combat.player.stamina
+	var health_before := combat.player.health.current
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.UP)
+
+	ctx.check_equal(dealt, 0.0, "de frente el golpe no entra")
+	ctx.check_equal(combat.player.health.current, health_before, "no se pierde vida")
+	ctx.check_equal(
+		stamina_before - combat.player.stamina,
+		GameConfig.BLOCK_STAMINA_COST,
+		"aguantar cuesta stamina, no vida"
+	)
+	ctx.check_equal(results, [CombatResult.BLOCKED], "y el intercambio se anota como bloqueado")
+	ctx.check(combat.is_blocking, "la guardia sigue arriba")
+
+
+## Un golpe por la espalda no se puede parar: la mirada y el empuje apuntan en el
+## mismo sentido, así que no es "de frente" y la guardia no lo cubre.
+func _blocking_does_not_stop_a_back_hit(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	combat.player.direction = Vector2.DOWN
+	combat.set_blocking(true)
+
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.DOWN)
+
+	ctx.check_equal(dealt, 6.0, "por la espalda entra")
+	ctx.check_equal(combat.player.health.current, 94.0, "y quita vida")
+	ctx.check(not combat.is_blocking, "el golpe tira la guardia")
+
+
+## Sin stamina no hay guardia que aguante: el golpe entra entero y además deja al
+## defensor abierto más tiempo. Es lo que convierte insistir en la guardia en una
+## decisión y no en un muro.
+func _guard_break_hurts_and_staggers(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	combat.player.direction = Vector2.DOWN
+	combat.player.spend_stamina(combat.player.stamina)
+	combat.set_blocking(true)
+
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.UP)
+
+	ctx.check(dealt > 0.0, "sin stamina la guardia no para nada")
+	ctx.check_equal(combat.player.health.current, 100.0 - dealt, "la vida baja")
+	ctx.check(not combat.is_blocking, "la guardia cae")
+	ctx.check(combat.is_staggered, "y queda abierto, no solo tambaleando")
+	ctx.check_almost_equal(
+		combat.movement_multiplier, GameConfig.STAGGER_MOVE_MULT_HIGH, "sin poder andar"
+	)
+	ctx.check_equal(combat.reaction_clip, &"hit_light", "con la pose del golpe recibido")
+
+	# El guard break dura más que el clip: todavía sigue abierto a mitad del
+	# sobretiempo y se cierra al agotarlo.
+	combat.advance(GameConfig.BLOCK_BREAK_TIME - DELTA)
+	ctx.check(combat.is_reacting, "sigue abierto casi hasta el final del tiempo extra")
+	combat.advance(DELTA * 2.0)
+	ctx.check(not combat.is_reacting, "y se recupera")
+
+
+## La guardia no es un interruptor de mano libre: no sube a mitad de un golpe, ni
+## rodando, ni con el cuerpo respondiendo a otro golpe.
+func _block_refuses_when_busy(ctx: ScriptTestContext) -> void:
+	var attacking := _combat()
+	ctx.check(attacking.try_attack(Vector2.RIGHT), "el golpe sale")
+	attacking.set_blocking(true)
+	ctx.check(not attacking.is_blocking, "no se levanta la guardia atacando")
+	ctx.check_equal(
+		attacking.phase, CombatState.Kind.WINDUP, "ni se pisa la fase del ataque"
+	)
+
+	var stunned := _combat()
+	stunned.apply_stun()
+	stunned.set_blocking(true)
+	ctx.check(not stunned.is_blocking, "ni aturdido")
+
+	var dodging := _combat()
+	ctx.check(dodging.try_dodge(Vector2.RIGHT), "la rodada sale")
+	dodging.set_blocking(true)
+	ctx.check(not dodging.is_blocking, "ni rodando")
+	ctx.check_equal(dodging.phase, CombatState.Kind.DODGING, "la rodada sigue su curso")
+
+
+## La rodada (sección 30) no es invulnerable durante todo el gesto: primero hay que
+## hacer el arranque y luego se abre una ventana. Cuesta stamina y no se encadena.
+func _dodge_has_a_window_and_a_cost(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var starts: Array[Vector2] = []
+	combat.dodge_started.connect(
+		func(direction: Vector2, _duration: float) -> void: starts.append(direction)
+	)
+	var stamina_before := combat.player.stamina
+
+	ctx.check(combat.try_dodge(Vector2.RIGHT), "la rodada sale")
+	ctx.check_equal(starts, [Vector2.RIGHT], "avisa de hacia dónde rueda")
+	ctx.check_equal(combat.player.state, PlayerState.Kind.DODGING, "el estado es DODGING")
+	ctx.check_equal(
+		stamina_before - combat.player.stamina, GameConfig.DODGE_STAMINA, "cuesta su stamina"
+	)
+	ctx.check(not combat.is_dodge_invulnerable, "al empezar el gesto aún no es invulnerable")
+	ctx.check_almost_equal(
+		combat.movement_multiplier, GameConfig.DODGE_MOVE_MULT, "la intención no mueve: rueda el gesto"
+	)
+	ctx.check(not combat.try_dodge(Vector2.RIGHT), "no se encadenan dos rodadas")
+
+	combat.advance(GameConfig.DODGE_STARTUP_TIME + DELTA)
+	ctx.check(combat.is_dodge_invulnerable, "pasado el arranque se abre la ventana")
+
+	combat.advance(GameConfig.DODGE_TOTAL_TIME)
+	ctx.check(not combat.is_dodging, "la rodada termina")
+	ctx.check_equal(combat.player.state, PlayerState.Kind.IDLE, "y el cuerpo vuelve a estar libre")
+	ctx.check(combat.external_velocity.is_zero_approx(), "sin empuje residual")
+
+
+## Dentro de la ventana de la rodada el golpe no entra y el intercambio lo dice:
+## es lo que permite distinguir "lo esquivé" de "no me tocó".
+func _dodge_evades_the_hit(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var results: Array[StringName] = []
+	combat.attack_received.connect(
+		func(result: StringName, _attack: AttackDefinition) -> void: results.append(result)
+	)
+
+	ctx.check(combat.try_dodge(Vector2.RIGHT), "la rodada sale")
+	combat.advance(GameConfig.DODGE_STARTUP_TIME + DELTA)
+
+	var health_before := combat.player.health.current
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.RIGHT)
+
+	ctx.check_equal(dealt, 0.0, "el golpe pasa de largo")
+	ctx.check_equal(combat.player.health.current, health_before, "sin perder vida")
+	ctx.check_equal(results, [CombatResult.DODGED], "y se anota como esquivado")
+	ctx.check(not combat.is_stunned, "y sin aturdirse")
+
+
+## Fuera de la ventana la rodada no protege (si no sería un botón de
+## inmortalidad), y tampoco sale aturdido, sin stamina ni por debajo de su espera.
+func _dodge_refuses_when_busy(ctx: ScriptTestContext) -> void:
+	var stunned := _combat()
+	stunned.apply_stun()
+	ctx.check(not stunned.try_dodge(Vector2.RIGHT), "aturdido no se rueda")
+
+	var tired := _combat()
+	tired.player.spend_stamina(tired.player.stamina)
+	ctx.check(not tired.try_dodge(Vector2.RIGHT), "sin stamina tampoco")
+
+	var waiting := _combat()
+	ctx.check(waiting.try_dodge(Vector2.RIGHT), "la primera rodada sale")
+	waiting.advance(GameConfig.DODGE_TOTAL_TIME + DELTA)
+	ctx.check(not waiting.is_dodging, "y ha terminado")
+	ctx.check(waiting.dodge_cooldown_ratio > 0.0, "pero la espera no ha pasado")
+	ctx.check(not waiting.try_dodge(Vector2.RIGHT), "así que no sale la segunda")
+
+	# Fuera de la ventana de invulnerabilidad el golpe entra igual.
+	var rolling := _combat()
+	ctx.check(rolling.try_dodge(Vector2.RIGHT), "la rodada sale")
+	ctx.check(not rolling.is_dodge_invulnerable, "durante el arranque no protege")
+	ctx.check(
+		rolling.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.UP) > 0.0,
+		"y el golpe entra antes de que la ventana se abra"
+	)
+
+
+## Un golpe con ataque levanta el clip de reacción que le toca: el jab deja la
+## reacción ligera, que tambalea pero deja andar un poco. El trance lo lleva el
+## combate con su propio reloj, no la vista.
+func _attack_raises_a_hit_reaction(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	combat.player.direction = Vector2.DOWN
+	var started: Array[StringName] = []
+	combat.reaction_started.connect(
+		func(clip: StringName, _duration: float) -> void: started.append(clip)
+	)
+	var finished: Array[String] = []
+	combat.reaction_finished.connect(func() -> void: finished.append("fin"))
+
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.UP)
+
+	ctx.check_equal(dealt, 6.0, "el golpe entra")
+	ctx.check_equal(combat.reaction_clip, &"hit_light", "y deja la reacción ligera")
+	ctx.check(not combat.is_staggered, "el jab tambalea, no aturde")
+	ctx.check_equal(combat.player.state, PlayerState.Kind.HURT, "el jugador queda en HURT")
+	ctx.check_equal(started, [&"hit_light"], "y lo avisa una sola vez")
+	ctx.check_almost_equal(
+		combat.movement_multiplier, GameConfig.REACTION_MOVE_MULT, "tambaleando todavía se anda"
+	)
+
+	combat.advance(GameConfig.REACTION_LIGHT_TIME + DELTA)
+	ctx.check(not combat.is_reacting, "el trance dura lo que dura su clip")
+	ctx.check_equal(combat.reaction_clip, &"", "y la vista ya no tiene clip que reproducir")
+	ctx.check_equal(finished, ["fin"], "y avisa del fin")
+
+	# El aturdimiento del daño dura más que la reacción: el cuerpo no vuelve a
+	# IDLE hasta que expira el más largo.
+	ctx.check_equal(combat.player.state, PlayerState.Kind.HURT, "el aturdimiento sigue mandando")
+	combat.advance(GameConfig.HURT_STUN_TIME)
+	ctx.check_equal(combat.player.state, PlayerState.Kind.IDLE, "y al expirar queda libre")
+
+
+## Un ataque que aturde de verdad (sección 26) deja al defensor sin andar y su
+## trance dura el clip más el sobretiempo del tier.
+func _heavy_attack_staggers(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.ELBOW), 12.0, Vector2.UP)
+
+	ctx.check_equal(dealt, 12.0, "el codo entra")
+	ctx.check(combat.is_staggered, "y aturde de verdad")
+	ctx.check_equal(combat.reaction_clip, &"hit_body", "con la reacción corporal")
+	ctx.check_almost_equal(
+		combat.movement_multiplier, GameConfig.STAGGER_MOVE_MULT_HIGH, "sin poder andar"
+	)
+
+	ctx.check(
+		GameConfig.REACTION_BODY_TIME + GameConfig.STAGGER_EXTRA_HIGH > GameConfig.REACTION_BODY_TIME,
+		"el trance dura más que el clip a secas"
+	)
+	combat.advance(GameConfig.REACTION_BODY_TIME + GameConfig.STAGGER_EXTRA_HIGH * 0.5)
+	ctx.check(combat.is_reacting, "a mitad del sobretiempo sigue aturdido")
+	combat.advance(GameConfig.STAGGER_EXTRA_HIGH)
+	ctx.check(not combat.is_reacting, "y se recupera al agotarlo")
+
+
+## El empuje del knockback (sección 27) es una velocidad que decae en línea recta
+## hasta cero: no un teletransporte. Se escribe en `external_velocity` para que el
+## movimiento la sume y la resuelva contra las paredes.
+func _knockback_pushes_and_decays(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	ctx.check(combat.external_velocity.is_zero_approx(), "sin golpes no hay velocidad externa")
+
+	combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.UP)
+	ctx.check(combat.external_velocity.y < 0.0, "el empuje va hacia donde venía el golpe")
+	ctx.check_almost_equal(
+		combat.external_velocity.length(), GameConfig.KNOCKBACK_FORCE_LOW, "con la fuerza del tier"
+	)
+
+	combat.advance(GameConfig.KNOCKBACK_TIME * 0.5)
+	ctx.check_almost_equal(
+		combat.external_velocity.length(),
+		GameConfig.KNOCKBACK_FORCE_LOW * 0.5,
+		"a mitad del tiempo queda la mitad del empuje"
+	)
+
+	combat.advance(GameConfig.KNOCKBACK_TIME)
+	ctx.check(combat.external_velocity.is_zero_approx(), "y al agotarse se apaga del todo")
+
+
+## Un golpe recibido a mitad de ataque corta el ataque: el trance manda. La ventana
+## de la hitbox se cierra y el fin del golpe se avisa como cualquier otro.
+func _a_hit_interrupts_the_attack(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var events: Array[String] = []
+	var results: Array[StringName] = []
+	combat.attack_window_closed.connect(func() -> void: events.append("ventana"))
+	combat.attack_finished.connect(func() -> void: events.append("golpe"))
+	combat.attack_received.connect(
+		func(result: StringName, _attack: AttackDefinition) -> void: results.append(result)
+	)
+
+	ctx.check(combat.try_attack(Vector2.RIGHT), "el golpe sale")
+	_open_window(combat)
+	ctx.check(combat.is_window_open, "con la ventana abierta")
+
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.UP)
+
+	ctx.check(dealt > 0.0, "el golpe entra")
+	ctx.check(not combat.is_attacking, "y corta el ataque en curso")
+	ctx.check(not combat.is_window_open, "cerrando la ventana de la hitbox")
+	ctx.check_equal(events, ["ventana", "golpe"], "en el orden de siempre")
+	ctx.check_equal(results, [CombatResult.INTERRUPTED], "y se anota como interrumpido")
+	ctx.check_equal(combat.combo_index, 0, "la cadena se pierde con el ataque")
+
+
+## El golpe del jugador prefiere la entrada rica del objetivo: así el enemigo reacciona
+## y es empujado. Si el objetivo solo sabe `take_damage`, se cae a esa puerta; las dos
+## formas tienen que seguir valiendo.
+func _strike_prefers_rich_targets(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	combat.player.direction = Vector2.DOWN
+	var rich := RichDummy.new(30.0, 2.0)
+	rich.position = combat.player.position + Vector2.DOWN * 20.0
+
+	ctx.check(combat.try_attack(Vector2.DOWN), "el golpe sale")
+	_open_window(combat)
+	var count := combat.strike([rich])
+
+	ctx.check_equal(count, 1, "el objetivo rico recibe el golpe")
+	ctx.check_equal(rich.received.size(), 1, "por su entrada de ataque")
+	ctx.check_equal(
+		rich.received[0]["attack"], AttackCatalog.of(AttackCatalog.LEFT_JAB), "con el ataque entero"
+	)
+	ctx.check_equal(
+		rich.received[0]["amount"],
+		GameConfig.WEAPON_STONE_DAMAGE - 2.0,
+		"y la defensa ya aplicada por el atacante"
+	)
+	ctx.check_equal(rich.received[0]["impact"], Vector2.DOWN, "y la dirección del empuje")
+
+	var plain := Dummy.new(30.0, 2.0)
+	var other := _combat()
+	other.try_attack(Vector2.DOWN)
+	_open_window(other)
+	ctx.check_equal(other.strike([plain]), 1, "y un objetivo del montón sigue funcionando")
+	ctx.check_equal(
+		plain.health.current, 30.0 - (GameConfig.WEAPON_STONE_DAMAGE - 2.0), "por `take_damage`"
+	)

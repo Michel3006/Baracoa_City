@@ -39,6 +39,7 @@ const FIELDS: PackedStringArray = [
 	"movement_multiplier",
 	"knockback",
 	"stagger",
+	"hit_reaction",
 	"combo_window",
 	"can_cancel",
 	"priority",
@@ -73,6 +74,10 @@ var movement_multiplier: float = 1.0
 ## Tiers de la sección 29: `low`, `medium`, `high`. F5 los traduce a píxeles.
 var knockback: StringName = &"low"
 var stagger: StringName = &"low"
+## Qué reacción levanta este golpe (sección 25): `light`, `body` o `head`. Es el
+## clip que reproduce el que lo recibe (`hit_light`, `hit_body`, `hit_head`), y
+## `CombatReaction` lo traduce. Un ataque sin él cae a `light`.
+var hit_reaction: StringName = CombatReaction.REACTION_LIGHT
 ## Ventana de buffer/combo de este ataque (sección 22), en segundos.
 var combo_window: float = GameConfig.COMBO_BUFFER_TIME
 ## Si se puede cancelar con movimiento o esquive (sección 24).

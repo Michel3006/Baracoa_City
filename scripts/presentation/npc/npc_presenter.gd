@@ -51,6 +51,8 @@ func setup(view: NpcView, npc: Npc, brain: NpcBrain, combat: NpcCombat) -> void:
 		_combat.attack_finished.connect(_on_attack_finished)
 		_combat.stun_changed.connect(_on_stun_changed)
 		_combat.invulnerability_changed.connect(_on_invulnerability_changed)
+		_combat.reaction_started.connect(_on_reaction_started)
+		_combat.reaction_finished.connect(_on_reaction_finished)
 		_combat.died.connect(_on_died)
 
 
@@ -93,11 +95,21 @@ func _sync_state() -> void:
 
 ## Aplica el desplazamiento y lo devuelve al dominio. El dominio es la fuente de
 ## verdad de la posición, igual que con el jugador.
+##
+## La intención de la IA se apaga mientras el cuerpo está en trance, y el empuje
+## del golpe (`external_velocity`) se suma siempre: es lo que hace que un enemigo
+## golpeado retroceda unos píxeles. Las paredes siguen parando el movimiento
+## porque lo resuelve `move_and_slide`.
 func _move(delta: float) -> void:
 	var intent := Vector2.ZERO
-	if not _npc.is_dead and not _combat.is_stunned and not _combat.is_attacking:
-		intent = _brain.intent()
-	_view.velocity = intent
+	if (
+		not _npc.is_dead
+		and not _combat.is_stunned
+		and not _combat.is_attacking
+		and not _combat.is_reacting
+	):
+		intent = _brain.intent() * _combat.movement_multiplier
+	_view.velocity = intent + _combat.external_velocity
 	_view.move_and_slide()
 	var moved := _view.velocity * delta
 	_view.apply_motion(moved)
@@ -179,6 +191,14 @@ func _on_invulnerability_changed(active: bool) -> void:
 
 func _on_stun_changed(active: bool) -> void:
 	_view.set_stun(active)
+
+
+func _on_reaction_started(clip: StringName, _duration: float) -> void:
+	_view.begin_reaction(clip)
+
+
+func _on_reaction_finished() -> void:
+	_view.end_reaction()
 
 
 func _on_died() -> void:

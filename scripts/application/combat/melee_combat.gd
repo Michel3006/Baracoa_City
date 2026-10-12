@@ -43,6 +43,19 @@ signal stun_applied(duration: float)
 ## tiñe el sprite con `STUN_TINT` mientras vale `true`, sin tener que consultar
 ## el reloj en cada fotograma.
 signal stun_changed(active: bool)
+## Reacción al recibir un golpe (sección 25): qué clip hay que reproducir y
+## cuánto dura el trance. Lo emite el cuerpo que recibe, no el que pega.
+signal reaction_started(clip: StringName, duration: float)
+signal reaction_finished()
+## Esquive (sección 30): dirección de la rodada y duración total del gesto.
+signal dodge_started(direction: Vector2, duration: float)
+signal dodge_finished()
+## Guardia (sección 31): sube al levantarla y baja al soltarla o al romperse.
+signal block_changed(active: bool)
+## Resultado de un golpe recibido (sección 19), con el ataque que lo causó (puede
+## ser `null` cuando el atacante no traía uno). El atacante ve `target_hit`; el
+## defensor ve esto.
+signal attack_received(result: StringName, attack: AttackDefinition)
 
 const REASON_DEAD := &"dead"
 const REASON_BUSY := &"busy"
@@ -80,6 +93,39 @@ var _invulnerable_remaining: float = 0.0
 var _stun_remaining: float = 0.0
 var _regen_delay_remaining: float = 0.0
 
+## --- F5: reacciones, empuje, esquive y guardia ---
+
+## Reacción en curso (secciones 25-26). `_reaction_remaining > 0` es el trance;
+## `_reaction_stagger` distingue la reacción corta (`HIT_REACTION`) del aturdimiento
+## que además limita el movimiento (`STAGGERED`). El reloj lo lleva el combate, no
+## la vista: la señal de fin no puede depender de lo que escriba otro sistema.
+var _reaction_remaining: float = 0.0
+var _reaction_clip: StringName = &""
+var _reaction_move_mult: float = 1.0
+var _reaction_stagger: bool = false
+
+## Empuje del knockback (sección 27). `_push_velocity` es la velocidad inicial y
+## `_push_remaining` el trozo que queda de `KNOCKBACK_TIME`: la fuerza decae en
+## línea recta hasta cero. Se aplica como velocidad externa aditiva en el
+## movimiento, así que respeta las paredes.
+var _push_velocity: Vector2 = Vector2.ZERO
+var _push_remaining: float = 0.0
+
+## Rodada (sección 30). `_dodge_remaining` es el reloj del gesto completo, que
+## arranca en `DODGE_TOTAL_TIME`; la ventana de invulnerabilidad se abre tras el
+## arranque y dura `DODGE_INVULN_TIME`, contadas desde que empezó la rodada.
+var _dodge_remaining: float = 0.0
+var _dodge_direction: Vector2 = Vector2.ZERO
+var _dodge_cooldown_remaining: float = 0.0
+
+## Guardia levantada (sección 31). No consume stamina por mantenerla: la paga
+## cada golpe que aguanta.
+var is_blocking: bool = false
+
+## Velocidad externa del fotograma (empuje o rodada). La lee el presentador y la
+## copia a `MovementController.external_velocity`.
+var external_velocity: Vector2 = Vector2.ZERO
+
 
 func _init(body: Player, starting_weapon: Weapon = null) -> void:
 	player = body
@@ -107,6 +153,71 @@ var is_stunned: bool:
 		return _stun_remaining > 0.0
 
 
+## ¿Está en trance por un golpe recibido? Cubre la reacción corta y el stagger.
+var is_reacting: bool:
+	get:
+		return _reaction_remaining > 0.0
+
+
+## ¿El trance es de los que limitan el movimiento y prohíben atacar (sección 26)?
+var is_staggered: bool:
+	get:
+		return is_reacting and _reaction_stagger
+
+
+## Clip de golpe que la vista debe reproducir mientras dura la reacción, o `&""`.
+var reaction_clip: StringName:
+	get:
+		return _reaction_clip if is_reacting else &""
+
+
+## ¿Está rodando? (sección 30)
+var is_dodging: bool:
+	get:
+		return _dodge_remaining > 0.0
+
+
+## ¿La rodada cubre ahora mismo su ventana de invulnerabilidad? (sección 30)
+##
+## La ventana no arranca al pulsar: primero hay que hacer el gesto
+## (`DODGE_STARTUP_TIME`) y luego cubre `DODGE_INVULN_TIME`. Un golpe que llega
+## durante la rodada pero fuera de la ventana entra igual, que es lo que impide
+## que la rodada sea un botón de inmortalidad.
+var is_dodge_invulnerable: bool:
+	get:
+		if not is_dodging:
+			return false
+		var elapsed := GameConfig.DODGE_TOTAL_TIME - _dodge_remaining
+		return (
+			elapsed >= GameConfig.DODGE_STARTUP_TIME
+			and elapsed < GameConfig.DODGE_STARTUP_TIME + GameConfig.DODGE_INVULN_TIME
+		)
+
+
+## Cuánto lleva la rodada en curso, en segundos. 0 si no hay rodada.
+var dodge_elapsed: float:
+	get:
+		if not is_dodging:
+			return 0.0
+		return GameConfig.DODGE_TOTAL_TIME - _dodge_remaining
+
+
+## Progreso de la espera entre esquives, de 0 (listo) a 1 (recién rodado).
+var dodge_cooldown_ratio: float:
+	get:
+		if GameConfig.DODGE_COOLDOWN <= 0.0:
+			return 0.0
+		return clampf(_dodge_cooldown_remaining / GameConfig.DODGE_COOLDOWN, 0.0, 1.0)
+
+
+## Posición del cuerpo que pelea. La lee quien ataca para saber por dónde sale el
+## empuje del golpe: el ataque se resuelve entre dos cuerpos de combate, y este es
+## el único dato de sitio que un cuerpo de combate expone.
+var position: Vector2:
+	get:
+		return Vector2.ZERO if player == null else player.position
+
+
 ## Id del ataque en curso, o `&""`. La vista lo usa para elegir clip.
 var current_attack_id: StringName:
 	get:
@@ -120,11 +231,20 @@ var current_duration: float:
 		return current_attack.duration if current_attack != null else GameConfig.ATTACK_RECOVERY
 
 
-## Cuánto deja pasar el movimiento mientras dura el golpe (sección 14). 1.0
-## cuando no hay golpe: la marcha normal no se toca.
+## Cuánto deja pasar el movimiento (secciones 14 y 26). Con un golpe manda el
+## ataque; en trance, lo que deje la reacción; rodando, la rodada avanza sola y la
+## intención no aporta; en guardia, se camina despacio.
 var movement_multiplier: float:
 	get:
-		return 1.0 if current_attack == null else current_attack.movement_multiplier
+		if current_attack != null:
+			return current_attack.movement_multiplier
+		if is_reacting:
+			return _reaction_move_mult
+		if is_dodging:
+			return GameConfig.DODGE_MOVE_MULT
+		if is_blocking:
+			return GameConfig.BLOCK_MOVE_MULT
+		return 1.0
 
 
 ## Estadísticas de quien pelea. `DamageRules` las busca para leer la defensa, de
@@ -165,9 +285,11 @@ func rejection_reason() -> StringName:
 	var active := active_weapon(false)
 	if active == null or not active.can_attack():
 		return REASON_BROKEN
-	if is_attacking:
+	if is_attacking or is_dodging:
 		return REASON_BUSY
-	if is_stunned:
+	# Un trance por golpe recibido bloquea atacar igual que el aturdimiento: con
+	# el cuerpo respondiendo al golpe no hay sitio para pedirle un gesto nuevo.
+	if is_stunned or is_reacting:
 		return REASON_STUNNED
 	if _cooldown_remaining > 0.0:
 		return REASON_COOLDOWN
@@ -322,6 +444,8 @@ func _start(
 	unarmed: bool
 ) -> void:
 	var active := active_weapon(unarmed)
+	# Atacar baja la guardia: no se pega con el brazo ocupado en el escudo.
+	_set_blocking(false)
 	current_attack = attack
 	combo_family = family
 	combo_index = index
@@ -468,7 +592,8 @@ func strike(targets: Array, used_unarmed: bool = false) -> int:
 	var active := active_weapon(used_unarmed)
 	if active == null:
 		return 0
-	var power := AttackCatalog.power_of(active, current_attack)
+	var attack := current_attack
+	var power := AttackCatalog.power_of(active, attack)
 	if not DamageRules.is_valid_attack(power):
 		return 0
 	var hits := 0
@@ -477,11 +602,43 @@ func strike(targets: Array, used_unarmed: bool = false) -> int:
 			continue
 		var damageable := target as Object
 		var defense := DamageRules.defense_of(damageable)
-		var dealt := float(damageable.call(&"take_damage", DamageRules.compute(power, defense)))
+		var dealt := _apply_to(damageable, attack, DamageRules.compute(power, defense))
 		if dealt > 0.0:
 			hits += 1
 			target_hit.emit(damageable, dealt)
 	return hits
+
+
+## Mete el golpe en un objetivo.
+##
+## Prefiere `take_attack`, que además del daño sabe de reacciones, de por dónde
+## viene el empuje y de guardias; si el objetivo solo sabe `take_damage` (un
+## objetivo de mentira, un cuerpo de una versión antigua) se cae a esa entrada.
+## El atacante no decide el trance del otro: solo dice qué ataque y por dónde
+## salió. Lo que el defensor haga con eso es suyo.
+##
+## La cantidad va ya con la defensa aplicada: la calcula el atacante, y el
+## defensor no la vuelve a pasar por la fórmula.
+func _apply_to(damageable: Object, attack: AttackDefinition, damage: float) -> float:
+	if damageable.has_method(&"take_attack"):
+		return float(damageable.call(&"take_attack", attack, damage, _impact_of(damageable)))
+	return float(damageable.call(&"take_damage", damage))
+
+
+## Dirección en la que sale empujado un objetivo: del atacante hacia él.
+##
+## El objetivo puede no exponer dónde está (los objetivos de mentira de los tests
+## son solo un contador de daño), y entonces se usa la mirada del atacante: el
+## empuje sale hacia donde mira quien pega, que es el respaldo razonable.
+func _impact_of(target: Object) -> Vector2:
+	var from := position
+	var to := from
+	if "position" in target:
+		var value: Variant = target.get(&"position")
+		if value is Vector2:
+			to = value
+	var fallback := player.direction if player != null else Vector2.DOWN
+	return CombatReaction.impact_direction(from, to, fallback)
 
 
 ## Daño recibido. Aplica la fórmula con la defensa del jugador, aturde y concede
@@ -490,12 +647,71 @@ func strike(targets: Array, used_unarmed: bool = false) -> int:
 func receive_damage(raw_damage: float, source: Object = null) -> float:
 	if player == null or player.is_dead or is_invulnerable:
 		return 0.0
-	var dealt := player.take_damage(DamageRules.compute(raw_damage, player.stats.defense))
+	return _receive_computed(DamageRules.compute(raw_damage, player.stats.defense), null, Vector2.ZERO, source)
+
+
+## Entrada rica del golpe recibido (secciones 19, 25-27 y 31).
+##
+## La usa el atacante que sí trae su `AttackDefinition`, y con ella el defensor
+## sabe qué reacción levantar, con cuánta fuerza lo empujan y si el golpe venía de
+## frente (guardia). `amount` viene ya calculado por el atacante: aquí no se vuelve
+## a aplicar la defensa.
+##
+## Orden de comprobaciones, que es la ley del combate: primero la ventana de
+## esquive (el golpe pasa de largo, no hay nada que parar), luego la
+## invulnerabilidad (ya me han dado), luego la guardia (lo aguanto si viene de
+## frente y tengo stamina) y por último el golpe de verdad.
+func take_attack(
+	attack: AttackDefinition, amount: float, impact: Vector2 = Vector2.ZERO
+) -> float:
+	if player == null or player.is_dead:
+		return 0.0
+	if is_dodge_invulnerable:
+		attack_received.emit(CombatResult.DODGED, attack)
+		return 0.0
+	if is_invulnerable:
+		return 0.0
+	if is_blocking and CombatReaction.is_from_front(impact, player.direction):
+		if player.has_stamina(GameConfig.BLOCK_STAMINA_COST):
+			player.spend_stamina(GameConfig.BLOCK_STAMINA_COST)
+			_regen_delay_remaining = GameConfig.STAMINA_REGEN_DELAY
+			_push(impact, GameConfig.KNOCKBACK_FORCE_LOW)
+			attack_received.emit(CombatResult.BLOCKED, attack)
+			return 0.0
+		# Guardia rota: no había stamina para aguantar. Entra el golpe entero y
+		# encima deja al defensor abierto, que es lo que convierte insistir en la
+		# guardia en una decisión y no en un muro.
+		_set_blocking(false)
+		var broken := _receive_computed(amount, null, impact, null)
+		if broken > 0.0:
+			_force_stagger(GameConfig.BLOCK_BREAK_TIME)
+		attack_received.emit(CombatResult.HIT, attack)
+		return broken
+	var was_attacking := is_attacking
+	var dealt := _receive_computed(amount, attack, impact, null)
+	if dealt > 0.0:
+		attack_received.emit(
+			CombatResult.INTERRUPTED if was_attacking else CombatResult.HIT, attack
+		)
+	return dealt
+
+
+## Núcleo del daño recibido: quita vida, concede invulnerabilidad, aturde, empuja
+## y levanta la reacción. `attack` puede ser `null` (el atacante no traía uno) y
+## entonces el trance se deduce del daño.
+func _receive_computed(
+	amount: float, attack: AttackDefinition, impact: Vector2, source: Object
+) -> float:
+	if player == null or player.is_dead or is_invulnerable or amount <= 0.0:
+		return 0.0
+	var dealt := player.take_damage(amount)
 	if dealt <= 0.0:
 		return 0.0
 	grant_invulnerability()
 	apply_stun()
 	damaged.emit(dealt, source)
+	if not player.is_dead:
+		_start_reaction(attack, dealt, impact)
 	return dealt
 
 
@@ -533,6 +749,208 @@ func apply_stun(duration: float = GameConfig.HURT_STUN_TIME) -> void:
 	player.transition_to(PlayerState.Kind.HURT)
 
 
+## Levanta o suelta la guardia (sección 31).
+##
+## Se puede pedir cada fotograma sin coste: la guardia solo sube si el cuerpo está
+## libre, porque no se levanta el escudo a mitad de un golpe ni de una rodada. Una
+## vez arriba se queda hasta que la suelten, se rompa o el jugador ataque. No
+## gasta stamina por mantenerse: la paga cada golpe aguantado.
+func set_blocking(held: bool) -> void:
+	if player == null or player.is_dead:
+		held = false
+	if not held:
+		_set_blocking(false)
+		return
+	if is_attacking or is_dodging or is_reacting or is_stunned:
+		return
+	_set_blocking(true)
+
+
+func _set_blocking(active: bool) -> void:
+	if is_blocking == active:
+		return
+	is_blocking = active
+	if active:
+		_set_phase(CombatState.Kind.BLOCKING)
+	elif phase == CombatState.Kind.BLOCKING:
+		_set_phase(CombatState.Kind.FREE)
+	block_changed.emit(active)
+
+
+## Inicia una rodada (sección 30).
+##
+## El destino es la dirección pedida (la intención del jugador) o, sin ella, hacia
+## donde mira. No sale durante una reacción, otra rodada ni el aturdimiento, y
+## desde un ataque solo si ese ataque lo permite y ya está en recuperación
+## (sección 24: cancelar es la excepción del jab, no la norma).
+##
+## Devuelve `false` si no sale. No emite rechazo a propósito: pedir una rodada a
+## destiempo es lo normal y llenaría la consola de ruido.
+func try_dodge(direction: Vector2 = Vector2.ZERO) -> bool:
+	if player == null or player.is_dead:
+		return false
+	if is_dodging or is_reacting or is_stunned:
+		return false
+	if _dodge_cooldown_remaining > 0.0:
+		return false
+	if is_attacking:
+		if current_attack == null or not current_attack.can_cancel:
+			return false
+		if phase != CombatState.Kind.RECOVERY:
+			return false
+	if not player.has_stamina(GameConfig.DODGE_STAMINA):
+		return false
+
+	var heading := direction
+	if heading.is_zero_approx():
+		heading = player.direction
+	if heading.is_zero_approx():
+		heading = Vector2.DOWN
+	heading = heading.normalized()
+
+	if is_attacking:
+		_abort_attack()
+	_set_blocking(false)
+
+	player.direction = heading
+	player.spend_stamina(GameConfig.DODGE_STAMINA)
+	_regen_delay_remaining = GameConfig.STAMINA_REGEN_DELAY
+	_dodge_cooldown_remaining = GameConfig.DODGE_COOLDOWN
+	_dodge_direction = heading
+	_dodge_remaining = GameConfig.DODGE_TOTAL_TIME
+	# La rodada se lleva por delante cualquier empuje a medias: es un gesto nuevo.
+	_push_remaining = 0.0
+	_push_velocity = Vector2.ZERO
+	_refresh_external_velocity()
+	player.transition_to(PlayerState.Kind.DODGING)
+	_set_phase(CombatState.Kind.DODGING)
+	dodge_started.emit(_dodge_direction, GameConfig.DODGE_TOTAL_TIME)
+	return true
+
+
+## Arranca un trance por golpe recibido (secciones 25-27).
+##
+## `CombatReaction` decide qué clip, cuánto dura y con qué fuerza empuja; aquí solo
+## se copia eso a los relojes del cuerpo. El golpe en curso se pierde (el trance
+## manda), la guardia cae y el empuje sale hacia donde venía el golpe.
+func _start_reaction(attack: AttackDefinition, damage: float, impact: Vector2) -> void:
+	var plan := CombatReaction.plan(attack, damage)
+	if is_dodging:
+		_dodge_remaining = 0.0
+		dodge_finished.emit()
+	if is_attacking:
+		_abort_attack()
+	_set_blocking(false)
+	_reaction_remaining = float(plan["time"])
+	_reaction_clip = plan["clip"]
+	_reaction_move_mult = float(plan["movement_multiplier"])
+	_reaction_stagger = bool(plan["stagger"])
+	_push(impact, float(plan["force"]))
+	player.transition_to(PlayerState.Kind.HURT)
+	_set_phase(
+		CombatState.Kind.STAGGERED if _reaction_stagger else CombatState.Kind.HIT_REACTION
+	)
+	reaction_started.emit(_reaction_clip, _reaction_remaining)
+
+
+## Convierte el trance en curso en un aturdimiento de al menos `seconds`.
+##
+## La usan la guardia rota y el golpe que entra a medias: el daño ya ha entrado,
+## pero además deja al defensor abierto más tiempo del que dura su clip.
+func _force_stagger(seconds: float) -> void:
+	_reaction_stagger = true
+	_reaction_remaining = maxf(_reaction_remaining, seconds)
+	_reaction_move_mult = GameConfig.STAGGER_MOVE_MULT_HIGH
+	if phase == CombatState.Kind.HIT_REACTION:
+		_set_phase(CombatState.Kind.STAGGERED)
+
+
+## Fin del trance: el cuerpo vuelve a estar disponible, salvo que el aturdimiento
+## siga corriendo, que entonces manda él.
+func _end_reaction() -> void:
+	_reaction_remaining = 0.0
+	_reaction_clip = &""
+	_reaction_move_mult = 1.0
+	_reaction_stagger = false
+	if phase == CombatState.Kind.HIT_REACTION or phase == CombatState.Kind.STAGGERED:
+		_set_phase(CombatState.Kind.FREE)
+	if player != null and player.state == PlayerState.Kind.HURT and not is_stunned:
+		player.transition_to(PlayerState.Kind.IDLE)
+	reaction_finished.emit()
+
+
+## Fin de la rodada: se recupera el cuerpo y se para el gesto.
+func _end_dodge() -> void:
+	_dodge_remaining = 0.0
+	if phase == CombatState.Kind.DODGING:
+		_set_phase(CombatState.Kind.FREE)
+	if player != null and player.state == PlayerState.Kind.DODGING:
+		player.transition_to(PlayerState.Kind.IDLE)
+	_refresh_external_velocity()
+	dodge_finished.emit()
+
+
+## Corta el golpe en curso sin dejar que el buffer arranque otro.
+##
+## Pasa cuando un golpe te interrumpe o cuando una rodada cancela una
+## recuperación: el ataque termina porque lo han cortado, no porque haya
+## encadenado, así que se tira la entrada guardada y se cierra la ventana si
+## estaba abierta. La señal de fin sale igual, porque quien la escucha no tiene
+## por qué distinguir un final por reloj de uno por interrupción.
+func _abort_attack() -> void:
+	if not is_attacking:
+		return
+	if phase == CombatState.Kind.ACTIVE:
+		attack_window_closed.emit()
+	_buffered = {}
+	_finish_attack()
+
+
+## Arranca un empuje hacia donde venía el golpe, con la fuerza dada en píxeles por
+## segundo. El decaimiento lo lleva `_push_remaining`, no la velocidad.
+func _push(impact: Vector2, force: float) -> void:
+	if force <= 0.0 or impact.is_zero_approx():
+		return
+	_push_velocity = impact.normalized() * force
+	_push_remaining = GameConfig.KNOCKBACK_TIME
+	_refresh_external_velocity()
+
+
+## Recalcula la velocidad externa del fotograma a partir de lo que haya vivo.
+##
+## La rodada manda: si estás rodando, el gesto te lleva. Si no, queda lo que quede
+## del empuje, que decae en línea recta desde `_push_velocity` hasta cero durante
+## `KNOCKBACK_TIME`.
+func _refresh_external_velocity() -> void:
+	if is_dodging:
+		external_velocity = _dodge_direction * GameConfig.DODGE_SPEED
+		return
+	if _push_remaining > 0.0:
+		external_velocity = _push_velocity * (_push_remaining / GameConfig.KNOCKBACK_TIME)
+		return
+	external_velocity = Vector2.ZERO
+
+
+## Entra en `DEAD`: se corta todo lo que estuviera pasando y el cuerpo se suelta.
+##
+## El combate no revive a nadie (eso es de la reaparición, que es otro caso de
+## uso): solo deja de aceptar entradas mientras el jugador esté muerto. Al
+## reaparecer, `player.is_dead` vuelve a ser falso y la fase sale de `DEAD` sola.
+func _enter_dead() -> void:
+	if is_attacking:
+		_abort_attack()
+	_reaction_remaining = 0.0
+	_reaction_clip = &""
+	_reaction_move_mult = 1.0
+	_reaction_stagger = false
+	_dodge_remaining = 0.0
+	_set_blocking(false)
+	_push_remaining = 0.0
+	_push_velocity = Vector2.ZERO
+	external_velocity = Vector2.ZERO
+	_set_phase(CombatState.Kind.DEAD)
+
+
 ## Cambia el arma en mano. El sistema de combate no lleva inventario: solo usa
 ## lo que le dan.
 func equip(new_weapon: Weapon) -> bool:
@@ -553,12 +971,41 @@ func advance(delta: float) -> void:
 	if delta <= 0.0:
 		return
 
+	if player != null and player.is_dead:
+		if phase != CombatState.Kind.DEAD:
+			_enter_dead()
+	elif phase == CombatState.Kind.DEAD:
+		# Reaparecer saca la fase de DEAD sin que nadie tenga que avisar: la
+		# muerte es un dato del jugador y el combate lo lee, en vez de conectarse
+		# a su señal (dos `RefCounted` conectados son un ciclo que Godot no
+		# recolecta).
+		_set_phase(CombatState.Kind.FREE)
+
 	if _cooldown_remaining > 0.0:
 		_cooldown_remaining = maxf(0.0, _cooldown_remaining - delta)
+
+	if _dodge_cooldown_remaining > 0.0:
+		_dodge_cooldown_remaining = maxf(0.0, _dodge_cooldown_remaining - delta)
 
 	if current_attack != null:
 		_attack_elapsed += delta
 		_sync_phase()
+
+	if _push_remaining > 0.0:
+		_push_remaining = maxf(0.0, _push_remaining - delta)
+
+	if is_dodging:
+		_dodge_remaining = maxf(0.0, _dodge_remaining - delta)
+		if _dodge_remaining <= 0.0:
+			_end_dodge()
+
+	# El trance se cierra antes que el aturdimiento para que, cuando los dos
+	# expiran en el mismo fotograma, el que devuelve a IDLE sea el aturdimiento:
+	# así el orden de los dos relojes no cambia el estado final.
+	if is_reacting:
+		_reaction_remaining = maxf(0.0, _reaction_remaining - delta)
+		if _reaction_remaining <= 0.0:
+			_end_reaction()
 
 	if _invulnerable_remaining > 0.0:
 		_invulnerable_remaining = maxf(0.0, _invulnerable_remaining - delta)
@@ -572,6 +1019,7 @@ func advance(delta: float) -> void:
 			if player.state == PlayerState.Kind.HURT:
 				player.transition_to(PlayerState.Kind.IDLE)
 
+	_refresh_external_velocity()
 	_advance_stamina(delta)
 
 

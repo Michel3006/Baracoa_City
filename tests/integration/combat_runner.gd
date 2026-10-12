@@ -85,6 +85,8 @@ func _run() -> void:
 	await _check("el reloj no retrocede", _clock_never_rewinds)
 	await _check("el arco sale al golpear con arma", _slash_spawns_armed)
 	await _check("a puños no sale arco", _no_slash_unarmed)
+	await _check("el golpe recibido levanta su reacción en la vista", _reaction_reaches_the_view)
+	await _check("el empuje del golpe mueve el cuerpo", _knockback_moves_the_body)
 
 	_cleanup()
 	_report()
@@ -417,4 +419,67 @@ func _clock_never_rewinds() -> void:
 	combat.advance(-5.0)
 	_context.check(
 		not combat.can_attack(), "advance(negativo) no debe limpiar el cooldown"
+	)
+
+
+## La reacción no es un número de la aritmética: es lo que se ve. El golpe que
+## recibe el jugador llega a la vista vía las señales del caso de uso —aunque el
+## presentador esté apagado, las señales siguen conectadas— y reproduce el clip del
+## tier, y el trance lo cierra el reloj del combate, no la vista.
+func _reaction_reaches_the_view() -> void:
+	_reset_combat()
+	var combat := _combat()
+	# Limpia cualquier reacción previa que un caso anterior haya dejado a medias:
+	# esta suite comparte el mismo combate.
+	combat.advance(GameConfig.REACTION_HEAD_TIME + GameConfig.STAGGER_EXTRA_HIGH + 0.5)
+	await _settle()
+
+	_context.check_equal(_player().reaction_clip(), &"", "sin golpes no hay clip de reacción")
+
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.UP)
+	_context.check(dealt > 0.0, "el golpe entra al jugador")
+	_context.check_equal(
+		_player().reaction_clip(), &"hit_light", "y la vista reproduce el clip ligero"
+	)
+
+	combat.advance(GameConfig.REACTION_LIGHT_TIME + DELTA)
+	_context.check_equal(_player().reaction_clip(), &"", "al terminar el trance se limpia")
+
+
+## El empuje del golpe (sección 27) no es un número en el dominio: es el cuerpo que
+## se desplaza. Con el presentador apagado se hace a mano lo que hace su
+## `_physics_process` (avanzar el reloj, copiar el empuje al movimiento y mover), y
+## el cuerpo tiene que acabar unos píxeles a la derecha y luego quedarse quieto.
+func _knockback_moves_the_body() -> void:
+	_reset_combat()
+	var combat := _combat()
+	combat.advance(GameConfig.REACTION_HEAD_TIME + GameConfig.STAGGER_EXTRA_HIGH + 0.5)
+	var movement: MovementController = _game().movement
+	await _settle()
+
+	var start := _player().global_position
+	combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.RIGHT)
+
+	for _frame: int in range(12):
+		combat.advance(DELTA)
+		movement.external_velocity = combat.external_velocity
+		movement.move(DELTA, Vector2.ZERO)
+		await physics_frame
+
+	_context.check(
+		_player().global_position.x > start.x + 1.0,
+		"el empuje desplaza el cuerpo hacia donde venía el golpe"
+	)
+
+	# El empuje se agota y el cuerpo se queda: terminado el tiempo, mover no
+	# desplaza más.
+	var settled := _player().global_position
+	for _frame: int in range(6):
+		combat.advance(DELTA)
+		movement.external_velocity = combat.external_velocity
+		movement.move(DELTA, Vector2.ZERO)
+		await physics_frame
+	_context.check(
+		(_player().global_position - settled).length() < 0.5,
+		"y al agotarse deja de moverse"
 	)

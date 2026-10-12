@@ -72,6 +72,15 @@ var _swing_duration: float = GameConfig.ATTACK_RECOVERY
 var _is_hurt: bool = false
 var _is_stunned: bool = false
 var _is_dead: bool = false
+## Clip de reacción al golpe recibido (`hit_light`, `hit_body`, `hit_head`), o
+## `&""` si no hay trance. Lo manda el cuerpo de combate con `reaction_started`.
+var _reaction_clip: StringName = &""
+## Rodada en curso. Mientras dura, la pose de la rodada manda sobre caminar.
+var _is_dodging: bool = false
+## Guardia levantada. No hay clip que la dibuje (el pack no trae pose de guardia,
+## comprobado sobre las hojas: `Push`/`Pull` no son un bloqueo), así que este dato
+## solo existe para que la vista lo recuerde el día que haya arte.
+var _is_blocking: bool = false
 var _weapon_texture: Texture2D = null
 var _weapon_sprite: Sprite2D = null
 var _actor: ActorSprite = null
@@ -90,6 +99,9 @@ func revive() -> void:
 	set_dead(false)
 	set_hurt(false)
 	set_stun(false)
+	end_reaction()
+	end_dodge()
+	set_blocking(false)
 	_swing = -1.0
 	stop_hitbox()
 	_refresh_animation()
@@ -298,6 +310,75 @@ func set_stun(active: bool) -> void:
 	_apply_tint()
 
 
+## Trance por golpe recibido (sección 25): reproduce el clip del trance una vez.
+##
+## Si la hoja no trae ese clip (el humano clásico y el ninja solo tienen el golpe
+## genérico), la vista se queda con lo que hubiera en vez de avisar por consola:
+## un clip que no existe no es un error del juego, es arte que falta.
+func begin_reaction(clip: StringName) -> void:
+	if _actor == null or not _actor.has_clip(clip):
+		_reaction_clip = &""
+		return
+	_reaction_clip = clip
+	_actor.play(clip, true)
+	_refresh_animation()
+
+
+## Fin del trance: la pose vuelve a lo que toque (caminar, quieto o atacar).
+func end_reaction() -> void:
+	if _reaction_clip == &"":
+		return
+	_reaction_clip = &""
+	_refresh_animation()
+
+
+## Rodada (sección 30): reproduce el clip del gesto mirando hacia donde rueda.
+##
+## La orientación la fija la rodada, no la marcha: la pose es direccional y girar
+## mientras el cuerpo rueda hacia otro lado se ve como un patinaje.
+func begin_dodge(direction: Vector2) -> void:
+	_is_dodging = true
+	if not direction.is_zero_approx():
+		set_facing(direction)
+	if _actor != null and _actor.has_clip(GameConfig.DODGE_CLIP):
+		_actor.play(GameConfig.DODGE_CLIP, true)
+	_refresh_animation()
+
+
+func end_dodge() -> void:
+	if not _is_dodging:
+		return
+	_is_dodging = false
+	_refresh_animation()
+
+
+## Guardia levantada o suelta (sección 31). Sin clip propio: el pack no trae pose
+## de guardia. La vista lo recuerda para que, cuando llegue el arte, solo haya que
+## añadir el `play` aquí.
+func set_blocking(active: bool) -> void:
+	if _is_blocking == active:
+		return
+	_is_blocking = active
+	_refresh_animation()
+
+
+## ¿Se está dibujando la pose de guardia? (hoy siempre `false` en el dibujo, pero
+## el estado existe y los tests pueden comprobarlo)
+func is_blocking() -> bool:
+	return _is_blocking
+
+
+## Clip de reacción que se está reproduciendo, o `&""`. Lo leen los tests para
+## comprobar que el golpe que recibe el cuerpo tiene pose.
+func reaction_clip() -> StringName:
+	return _reaction_clip
+
+
+## ¿El cuerpo está dibujando la rodada?
+func is_dodging() -> bool:
+	return _is_dodging
+
+
 ## Muerte: el cuerpo queda congelado en el ultimo fotograma.
 func set_dead(active: bool) -> void:
 	if _is_dead == active:
@@ -370,13 +451,26 @@ func _physics_process(delta: float) -> void:
 		_punch.end()
 
 
-## Elige la animación que toca: la muerte no cede, y el golpe manda sobre el
-## desplazamiento para que no se interrupta a mitad de arco.
+## Elige la animación que toca, en este orden: muerte, rodada, trance, golpe,
+## caminar y quieto.
+##
+## La muerte no cede y la rodada manda sobre todo lo demás porque es un gesto
+## completo (se mueve sola, con su propio reloj). El trance va por delante del
+## golpe porque al recibir un golpe el ataque en curso se interrumpe. El golpe
+## manda sobre el desplazamiento para que no se corte a mitad de arco.
 func _refresh_animation() -> void:
 	if _actor == null:
 		return
 	if _is_dead:
 		_actor.play(ActorSprite.DEAD)
+		return
+	if _is_dodging and _actor.has_clip(GameConfig.DODGE_CLIP):
+		if _actor.current_clip() != GameConfig.DODGE_CLIP:
+			_actor.play(GameConfig.DODGE_CLIP, true)
+		return
+	if _reaction_clip != &"":
+		if _actor.current_clip() != _reaction_clip:
+			_actor.play(_reaction_clip, true)
 		return
 	if _swing >= 0.0:
 		if _actor.current_clip() != _attack_clip:

@@ -40,6 +40,10 @@ var _is_attacking: bool = false
 var _is_hurt: bool = false
 var _is_stunned: bool = false
 var _is_dead: bool = false
+## Clip de reacción al golpe (`hit_light`, `hit_body`, `hit_head`), o `&""`. Los
+## enemigos reaccionan con el mismo sistema que el jugador: el trance lo decide
+## `CombatReaction` a partir del daño recibido.
+var _reaction_clip: StringName = &""
 var _actor: ActorSprite = null
 
 
@@ -171,6 +175,29 @@ func set_stun(active: bool) -> void:
 	_apply_tint()
 
 
+## Trance por golpe recibido: reproduce el clip una vez. Si la hoja no lo trae, la
+## vista se queda con lo que hubiera: arte que falta no es un error del juego.
+func begin_reaction(clip: StringName) -> void:
+	if _actor == null or not _actor.has_clip(clip):
+		_reaction_clip = &""
+		return
+	_reaction_clip = clip
+	_actor.play(clip, true)
+	_refresh_animation()
+
+
+func end_reaction() -> void:
+	if _reaction_clip == &"":
+		return
+	_reaction_clip = &""
+	_refresh_animation()
+
+
+## Clip de reacción que se está reproduciendo, o `&""`. Lo leen los tests.
+func reaction_clip() -> StringName:
+	return _reaction_clip
+
+
 ## Muerte: quieto, apagado y con la hitbox apagada para que no siga golpeando.
 func set_dead(active: bool) -> void:
 	if _is_dead == active:
@@ -196,12 +223,18 @@ func _apply_tint() -> void:
 		modulate = tint
 
 
-## Elige la animación: la muerte no cede y el golpe manda sobre el desplazamiento.
+## Elige la animación: la muerte no cede, luego el trance, y el golpe manda sobre
+## el desplazamiento. El trance va por delante del golpe porque al recibir un
+## golpe el ataque en curso se interrumpe.
 func _refresh_animation() -> void:
 	if _actor == null:
 		return
 	if _is_dead:
 		_actor.play(ActorSprite.DEAD)
+		return
+	if _reaction_clip != &"":
+		if _actor.current_clip() != _reaction_clip:
+			_actor.play(_reaction_clip, true)
 		return
 	if _is_attacking:
 		_actor.play(ActorSprite.ATTACK)

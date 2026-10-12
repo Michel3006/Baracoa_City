@@ -59,6 +59,7 @@ func _run() -> void:
 	await _check("el golpe del NPC deja ver el arco", _npc_slash_spawns)
 	await _check("al recibir daño el jugador se tiñe de rojo", _player_flashes_when_hurt)
 	await _check("al recibir daño el enemigo se tiñe de rojo", _npc_flashes_when_hurt)
+	await _check("el golpe al enemigo lo hace reaccionar y lo empuja", _npc_reacts_and_gets_pushed)
 	await _check("el presentador del NPC golpea sin ayuda", _npc_presenter_strikes_player)
 	await _check("la invulnerabilidad protege al jugador", _player_invulnerable)
 	await _check("la invulnerabilidad del NPC aguanta", _npc_invulnerable)
@@ -637,6 +638,56 @@ func _npc_flashes_when_hurt() -> void:
 	_context.check(
 		view.modulate.is_equal_approx(view.tint),
 		"pasada la invulnerabilidad el tinte se apaga y queda en %s" % str(view.modulate)
+	)
+
+
+## El golpe del jugador no solo quita vida: entra por la entrada rica del enemigo (su
+## `NpcCombat`), levanta el clip de reacción en su vista y lo empuja. Y el empuje de
+## verdad se ve: cuando se enciende el presentador del enemigo, su `_move` aplica
+## `external_velocity` y el cuerpo se desplaza por la física. Es la cadena completa,
+## la que los unitarios no pueden ver.
+func _npc_reacts_and_gets_pushed() -> void:
+	var npc := _healthy_npc()
+	if not _context.check(npc != null, "no hay enemigo con vida"):
+		return
+	var view := await _bring_npc_close(npc)
+	if not _context.check(view != null, "el enemigo no tiene cuerpo"):
+		return
+	var combat := _combat_of(npc)
+	if not _context.check(combat != null, "el enemigo no tiene combate propio"):
+		return
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	_reset_player_combat()
+	_presenter().set_physics_process(true)
+
+	_context.check(_combat().try_attack(Vector2.RIGHT), "el golpe sale")
+	await _settle(12)
+	_presenter().set_physics_process(false)
+
+	_context.check(
+		combat.external_velocity.x > 0.0,
+		"el golpe empuja al enemigo hacia donde venía"
+	)
+	_context.check_equal(
+		view.reaction_clip(), &"hit_light", "y su vista reproduce el clip de reacción"
+	)
+
+	# El presentador del enemigo estaba apagado, así que el empuje estaba congelado
+	# en el dominio. Se enciende solo al elegido, y para que su IA no ande a ningún
+	# lado se le da como objetivo su propia posición: con distancia cero decide
+	# ATTACK, que no produce intención, y además el trance corta la intención igual.
+	for agent: NpcDirector.Agent in _director().agents:
+		if agent.npc == npc:
+			agent.brain.set_target(npc.position)
+	var presenter := _presenter_of(npc)
+	var start := view.global_position
+	presenter.set_physics_process(true)
+	await _settle(6)
+	presenter.set_physics_process(false)
+
+	_context.check(
+		view.global_position.x > start.x + 1.0,
+		"y el empuje lo desplaza por la física"
 	)
 
 

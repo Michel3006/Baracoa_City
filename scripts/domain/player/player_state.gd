@@ -12,6 +12,7 @@ enum Kind {
 	IDLE,
 	MOVING,
 	ATTACKING,
+	DODGING,
 	HURT,
 	DEAD,
 }
@@ -20,17 +21,25 @@ const _NAMES := {
 	Kind.IDLE: "IDLE",
 	Kind.MOVING: "MOVING",
 	Kind.ATTACKING: "ATTACKING",
+	Kind.DODGING: "DODGING",
 	Kind.HURT: "HURT",
 	Kind.DEAD: "DEAD",
 }
 
 ## Transiciones permitidas. DEAD solo se alcanza desde HURT y no tiene salida
 ## (la reaparición la gestiona el caso de uso, no la máquina de estados).
+##
+## `DODGING` es del combate, no del movimiento: existe para que el reloj de la
+## rodada (sección 30) no lo pise `_sync_motion_state()` con `MOVING`, que es
+## justo lo que dejaría al jugador caminando con el cuerpo congelado en la
+## rodada. Por eso el movimiento no lo escribe nunca y sí puede entrar y salir de
+## él el combate.
 const _ALLOWED := {
-	Kind.IDLE: [Kind.MOVING, Kind.ATTACKING, Kind.HURT, Kind.DEAD],
-	Kind.MOVING: [Kind.IDLE, Kind.ATTACKING, Kind.HURT, Kind.DEAD],
-	Kind.ATTACKING: [Kind.IDLE, Kind.MOVING, Kind.HURT, Kind.DEAD],
-	Kind.HURT: [Kind.IDLE, Kind.MOVING, Kind.ATTACKING, Kind.DEAD],
+	Kind.IDLE: [Kind.MOVING, Kind.ATTACKING, Kind.DODGING, Kind.HURT, Kind.DEAD],
+	Kind.MOVING: [Kind.IDLE, Kind.ATTACKING, Kind.DODGING, Kind.HURT, Kind.DEAD],
+	Kind.ATTACKING: [Kind.IDLE, Kind.MOVING, Kind.DODGING, Kind.HURT, Kind.DEAD],
+	Kind.DODGING: [Kind.IDLE, Kind.MOVING, Kind.ATTACKING, Kind.HURT, Kind.DEAD],
+	Kind.HURT: [Kind.IDLE, Kind.MOVING, Kind.ATTACKING, Kind.DODGING, Kind.DEAD],
 	Kind.DEAD: [],
 }
 

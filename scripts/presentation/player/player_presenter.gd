@@ -25,6 +25,11 @@ const ACTION_ATTACK_UNARMED := &"attack_unarmed"
 const ACTION_ATTACK_HEAVY := &"attack_heavy"
 const ACTION_ATTACK_KICK := &"attack_kick"
 
+## Defensa (secciones 30 y 31): esquive y guardia. Se leen aquí por la misma razón
+## que el ataque: el teclado es cosa del dispositivo, no del caso de uso.
+const ACTION_DODGE := &"dodge"
+const ACTION_BLOCK := &"block"
+
 var _view: PlayerView = null
 var _movement: MovementController = null
 var _combat: MeleeCombat = null
@@ -68,6 +73,11 @@ func setup(view: PlayerView, movement: MovementController, combat: MeleeCombat =
 		_combat.stun_applied.connect(_on_stun_applied)
 		_combat.stun_changed.connect(_on_stun_changed)
 		_combat.invulnerability_changed.connect(_on_invulnerability_changed)
+		_combat.reaction_started.connect(_on_reaction_started)
+		_combat.reaction_finished.connect(_on_reaction_finished)
+		_combat.dodge_started.connect(_on_dodge_started)
+		_combat.dodge_finished.connect(_on_dodge_finished)
+		_combat.block_changed.connect(_on_block_changed)
 		# Los enemigos golpean a este nodo a través de la capa PLAYER, así que
 		# necesita saber a quién avisa. El objetivo es el cuerpo de combate y no el
 		# `Player` del dominio: así el daño respeta la invulnerabilidad.
@@ -85,13 +95,41 @@ func set_fx_parent(node: Node2D) -> void:
 
 func _physics_process(delta: float) -> void:
 	if _movement != null:
+		# El empuje (knockback o rodada) lo escribe el combate en su `advance()` y
+		# se copia al movimiento antes de mover: en el fotograma en que llega el
+		# golpe el empuje aún vale cero, así que se acepta un fotograma de latencia
+		# a cambio de no tener dos relojes para lo mismo.
+		if _combat != null:
+			_movement.external_velocity = _combat.external_velocity
 		_movement.move_speed = _current_move_speed()
 		_movement.move(delta, _movement.intent_from_input())
 	if _combat == null:
 		return
 	_combat.advance(delta)
+	_read_defense_input()
 	_read_attack_input()
 	_strike_visible_targets()
+
+
+## Traduce las teclas de defensa: la guardia se mantiene mientras se pulse, y el
+## esquive se dispara con una pulsación.
+##
+## El esquive sale hacia donde se camina y, sin dirección, hacia donde se mira: es
+## la diferencia entre rodar hacia atrás para salir del golpe y rodar hacia
+## delante. La guardia se refresca cada fotograma (levantar y soltar) y es el caso
+## de uso el que decide si puede subir ahora mismo.
+func _read_defense_input() -> void:
+	_combat.set_blocking(Input.is_action_pressed(ACTION_BLOCK))
+	if Input.is_action_just_pressed(ACTION_DODGE):
+		_combat.try_dodge(_dodge_direction())
+
+
+func _dodge_direction() -> Vector2:
+	if _movement != null:
+		var intent := _movement.intent_from_input()
+		if not intent.is_zero_approx():
+			return intent
+	return _facing()
 
 
 ## Velocidad a la que se mueve este fotograma (sección 14).
@@ -247,3 +285,28 @@ func _on_invulnerability_changed(active: bool) -> void:
 func _on_stun_changed(active: bool) -> void:
 	if _view != null:
 		_view.set_stun(active)
+
+
+func _on_reaction_started(clip: StringName, _duration: float) -> void:
+	if _view != null:
+		_view.begin_reaction(clip)
+
+
+func _on_reaction_finished() -> void:
+	if _view != null:
+		_view.end_reaction()
+
+
+func _on_dodge_started(direction: Vector2, _duration: float) -> void:
+	if _view != null:
+		_view.begin_dodge(direction)
+
+
+func _on_dodge_finished() -> void:
+	if _view != null:
+		_view.end_dodge()
+
+
+func _on_block_changed(active: bool) -> void:
+	if _view != null:
+		_view.set_blocking(active)

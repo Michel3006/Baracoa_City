@@ -22,6 +22,15 @@ var move_speed: float = GameConfig.PLAYER_SPEED
 var is_blocked: bool = false
 var is_enabled: bool = true
 
+## Empuje externo del fotograma (knockback y rodada, secciones 27 y 30): se suma
+## a la intención y no la sustituye. Lo escribe el presentador desde el cuerpo de
+## combate, que es quien sabe cuánto queda de empuje; aquí no hay reloj propio ni
+## decaimiento, porque el empuje no es una decisión del movimiento.
+##
+## Va aparte de `is_blocked` a propósito: un golpe que te empuja justamente te
+## aturde, y si el bloqueo lo cancelara el knockback no se movería nunca.
+var external_velocity: Vector2 = Vector2.ZERO
+
 var _body: CharacterBody2D = null
 var _facing: Vector2 = DIRECTION_DOWN
 var _block_remaining: float = 0.0
@@ -55,11 +64,14 @@ func move(delta: float, intent: Vector2) -> Vector2:
 		return Vector2.ZERO
 	advance(delta)
 	var velocity := Vector2.ZERO
-	if is_enabled and not is_blocked:
-		velocity = intent * move_speed
+	if is_enabled:
+		var intent_velocity := Vector2.ZERO if is_blocked else intent * move_speed
+		velocity = intent_velocity + external_velocity
 	_body.velocity = velocity
 	_body.move_and_slide()
-	if not velocity.is_zero_approx():
+	# La orientación la decide la intención, no el empuje: un knockback no gira al
+	# cuerpo hacia la pared contra la que lo estampa.
+	if is_enabled and not is_blocked and not intent.is_zero_approx():
 		update_facing(intent)
 	var moved := _body.velocity * delta
 	move_performed.emit(velocity, moved)

@@ -90,6 +90,79 @@ const ATTACK_MOVE_MULT_JAB := 0.65
 const ATTACK_MOVE_MULT_HOOK := 0.55
 const ATTACK_MOVE_MULT_HEAVY := 0.25
 const ATTACK_MOVE_MULT_KICK := 0.45
+
+# --- Reacciones al recibir un golpe (secciones 25-27) ---
+## Los tres clips de "Hit" del pack duran lo que duran sus hojas: `hit_light` 12
+## fotogramas, `hit_body` 21 y `hit_head` 18, a `ATTACK_COMBAT_FPS`. No se
+## inventan: la reacción dura lo que dura su animación, igual que las fases de un
+## ataque duran lo que dura su clip. Si cambia una hoja, cambian aquí, y
+## `test_combat_reaction` lo comprueba contra `HormelzVisualData`.
+const REACTION_LIGHT_TIME := 12.0 / ATTACK_COMBAT_FPS
+const REACTION_BODY_TIME := 21.0 / ATTACK_COMBAT_FPS
+const REACTION_HEAD_TIME := 18.0 / ATTACK_COMBAT_FPS
+## Umbrales de daño para deducir reacción cuando el atacante no trae ataque (un
+## NPC sin catálogo, un objetivo de mentira): por debajo de 8 tambalea, a partir
+## de 12 levanta la cabeza. Solo es el respaldo; con `hit_reaction` manda el dato.
+const REACTION_DAMAGE_MEDIUM := 8.0
+const REACTION_DAMAGE_HIGH := 12.0
+## Cuánto deja moverse una reacción corta (sección 26: limitar, no congelar).
+const REACTION_MOVE_MULT := 0.3
+## Sobretiempo de stagger sobre la duración del clip: medio y alto. El stagger
+## además limita más el movimiento y prohíbe atacar y esquivar.
+const STAGGER_EXTRA_MEDIUM := 0.15
+const STAGGER_EXTRA_HIGH := 0.35
+const STAGGER_MOVE_MULT_MEDIUM := 0.2
+const STAGGER_MOVE_MULT_HIGH := 0.0
+## Empuje del knockback (sección 27), en píxeles por segundo, por tier de la
+## sección 29. Decae en línea recta a cero durante `KNOCKBACK_TIME`: un low deja
+## unos 4 px, un high unos 13. Nunca se teletransporta: lo mueve el cuerpo físico,
+## así que las paredes lo param.
+const KNOCKBACK_FORCE_LOW := 45.0
+const KNOCKBACK_FORCE_MEDIUM := 90.0
+const KNOCKBACK_FORCE_HIGH := 150.0
+const KNOCKBACK_TIME := 0.18
+
+# --- Esquive / rodada (sección 30) ---
+## El esquive usa el clip `roll_forward` del pack, que dura 16 fotogramas a
+## `ATTACK_COMBAT_FPS`. Las tres fases (arranque, invulnerabilidad, recuperación)
+## se reparten esos 16 fotogramas: no hay un total inventado, es el de la hoja.
+##
+## Con 4 de arranque la ventana de invulnerabilidad no arranca al pulsar (como en
+## un golpe: primero el gesto), y con 8 de invulnerabilidad cubre 0,118 s, que es
+## media rodada. Si cambia el clip, cambian los tres números y
+## `test_combat_reaction` lo compara con la hoja.
+const DODGE_CLIP: StringName = &"roll_forward"
+const DODGE_STARTUP_FRAMES := 4
+const DODGE_INVULN_FRAMES := 8
+const DODGE_TOTAL_FRAMES := 16
+const DODGE_STARTUP_TIME := DODGE_STARTUP_FRAMES / ATTACK_COMBAT_FPS
+const DODGE_INVULN_TIME := DODGE_INVULN_FRAMES / ATTACK_COMBAT_FPS
+const DODGE_TOTAL_TIME := DODGE_TOTAL_FRAMES / ATTACK_COMBAT_FPS
+## Coste de stamina y espera entre esquives: la rodada no es gratis ni infinita
+## (si no, esquivar sería la única tecla del juego).
+const DODGE_STAMINA := 12.0
+const DODGE_COOLDOWN := 0.35
+## Velocidad del empuje de la rodada, en píxeles por segundo, durante todo el
+## gesto: 120 x 0,235 s ≈ 28 px, algo menos de dos tiles. La rodada avanza sola;
+## la intención del jugador no aporta nada mientras dura (`DODGE_MOVE_MULT`).
+const DODGE_SPEED := 120.0
+const DODGE_MOVE_MULT := 0.0
+
+# --- Bloqueo (sección 31) ---
+## El pack no trae pose de guardia (se comprobó: `Push`/`Pull`/`Battlecry` no son
+## un bloqueo), así que la lógica existe pero no finge una animación que no hay:
+## el cuerpo se queda en su pose de reposo. Cuando llegue el arte, solo cambia
+## el clip que pide la vista.
+##
+## Un golpe de frente se aguanta: cuesta stamina y no entra daño. Sin stamina
+## suficiente la guardia se rompe, entra el golpe entero y el defensor queda
+## aturdido `BLOCK_BREAK_TIME`.
+const BLOCK_MOVE_MULT := 0.4
+const BLOCK_STAMINA_COST := 8.0
+const BLOCK_BREAK_TIME := 0.6
+## Fracción del daño que atraviesa un bloqueo que aguanta. 0.0 = lo para entero.
+const BLOCK_DAMAGE_RATIO := 0.0
+
 ## Fracción del cooldown durante la que la hitbox está activa. El golpe se registra
 ## en un instante concreto, no durante todo el cooldown.
 const HITBOX_ACTIVE_RATIO := 0.35
