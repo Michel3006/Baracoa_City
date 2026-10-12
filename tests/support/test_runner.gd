@@ -26,6 +26,7 @@ const TEST_FILES: PackedStringArray = [
 	"res://tests/unit/test_combat_impact.gd",
 	"res://tests/unit/test_npc.gd",
 	"res://tests/unit/test_npc_combat.gd",
+	"res://tests/unit/test_combat_dummy.gd",
 	"res://tests/unit/test_npc_brain.gd",
 	"res://tests/unit/test_world_bounds.gd",
 	"res://tests/unit/test_game_config.gd",

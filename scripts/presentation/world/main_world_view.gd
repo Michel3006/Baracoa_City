@@ -35,6 +35,9 @@ var hud: Hud = null
 ## cerrada e invisible; la abre el jugador con `toggle_inventory`.
 var inventory_panel: InventoryPanel = null
 var npc_spawner: NpcSpawner = null
+## Muñeco de entrenamiento (sección 33). Vive en su propio generador, aparte de
+## los enemigos: es un elemento del mundo, no un agente de la IA.
+var dummy_spawner: CombatDummySpawner = null
 
 ## Nodo contenedor de los efectos de golpe. Vive aquí y no dentro del jugador.
 var fx_layer: Node2D = null
@@ -77,6 +80,10 @@ func _refresh_debug_draw() -> void:
 			var view := presenter.get_parent() as NpcView
 			if view != null:
 				view.queue_redraw()
+	# El muñeco también: si quedara fuera de este refresco, apagar F2 dejaría su
+	# último fotograma de debug pintado en pantalla.
+	if dummy_spawner != null and dummy_spawner.view() != null:
+		dummy_spawner.view().queue_redraw()
 
 
 func _ready() -> void:
@@ -86,6 +93,7 @@ func _ready() -> void:
 	_build_hud()
 	_build_inventory()
 	_spawn_player(GameConfig.PLAYER_SPAWN)
+	_build_dummy()
 
 
 func _build_world() -> void:
@@ -140,6 +148,19 @@ func _spawn_player(spawn_position: Vector2) -> void:
 		presenter.set_fx_parent(fx_layer)
 	camera.follow(player)
 	player_spawned.emit(player)
+
+
+## Levanta el muñeco de entrenamiento (sección 33) en su puesto del mapa. Va en
+## su propio generador, independiente de la IA: no se le reparte objetivo, no
+## cuenta como enemigo y reaparece por su cuenta. La sacudida de cámara cuando lo
+## golpean llega por el mismo relevo que la de los enemigos.
+func _build_dummy() -> void:
+	if not GameConfig.DUMMY_ENABLED:
+		return
+	dummy_spawner = CombatDummySpawner.new()
+	dummy_spawner.name = "CombatDummy"
+	add_child(dummy_spawner)
+	dummy_spawner.setup(fx_layer, _on_npc_impact_struck)
 
 
 ## Levanta la capa de NPC y la conecta con su director.

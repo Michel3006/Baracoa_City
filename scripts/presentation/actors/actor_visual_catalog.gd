@@ -59,6 +59,7 @@ static func ids() -> Array[StringName]:
 	return [
 		PLAYER, PLAYER_HORMELZ, PLAYER_NINJA,
 		NpcKind.VANDAL, NpcKind.ROBBER, NpcKind.BRUTE, NpcKind.GANGSTER,
+		CombatDummy.KIND,
 	]
 
 
@@ -91,6 +92,8 @@ static func tint_of(id: StringName) -> Color:
 			return GameConfig.NPC_TINT_BRUTE
 		NpcKind.GANGSTER:
 			return GameConfig.NPC_TINT_GANGSTER
+		CombatDummy.KIND:
+			return GameConfig.DUMMY_TINT
 	return Color.WHITE
 
 
@@ -122,6 +125,11 @@ static func definition_of(id: StringName) -> CharacterVisualDefinition:
 		PLAYER_NINJA:
 			return _ninja_definition()
 		NpcKind.VANDAL, NpcKind.ROBBER, NpcKind.BRUTE, NpcKind.GANGSTER:
+			return _npc_hormelz_definition()
+		CombatDummy.KIND:
+			# El muñeco es la misma persona que los enemigos con otro color: misma
+			# hoja, mismo recorte, mismo sistema de golpe. Solo se diferencia en
+			# `tint_of`.
 			return _npc_hormelz_definition()
 	return null
 

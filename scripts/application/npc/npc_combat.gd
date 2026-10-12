@@ -271,7 +271,14 @@ func _receive_computed(amount: float, impact: Vector2, source: Object) -> float:
 	apply_stun()
 	damaged.emit(dealt, source)
 	impact_struck.emit(CombatReaction.knockback_of(null, dealt))
-	if not npc.is_dead:
+	if npc.is_dead:
+		# La muerte por esta entrada también avisa: `died()` estaba declarada sin
+		# emisor, y el presentador (para teñir y posar al cuerpo) y el generador
+		# del muñeco (para contar la reaparición) la esperan. Sin esta línea el
+		# golpe mataba y el cuerpo solo se enteraba en el siguiente fotograma por
+		# `_sync_state`, por lo que el reloj del generador jamás arrancaba.
+		died.emit()
+	else:
 		_start_reaction(dealt, impact)
 	return dealt
 

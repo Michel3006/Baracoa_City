@@ -63,6 +63,9 @@ func _run() -> void:
 	await _check("un golpe recibido congela al presentador y se descongela solo", _hit_stop_freezes_and_drains)
 	await _check("el HUD de depuración se enciende, muestra y se apaga", _debug_hud_toggles_and_lines)
 	await _check("la geometría de debug sigue a la hitbox y conmuta con F2", _debug_hitboxes_geometry_and_toggle)
+	await _check("el muñeco de combate está en el mundo y no se mueve ni pega", _dummy_exists_and_is_passive)
+	await _check("un golpe real del jugador entra al muñeco y reacciona", _dummy_takes_a_hit_and_reacts)
+	await _check("el muñeco muere y reaparece a los dos segundos", _dummy_dies_and_respawns)
 
 	_report()
 	quit(0 if _failed == 0 else 1)
@@ -1383,3 +1386,224 @@ func _debug_hitboxes_geometry_and_toggle() -> void:
 	_context.check_equal(CombatDebug.show, not before, "pulsar F2 conmuta el dibujo de hitboxes")
 	if CombatDebug.show != before:
 		CombatDebug.toggle()
+
+
+# --- muñeco de entrenamiento (seccion 33) ---
+
+func _collect_dummies(from: Node, into: Array) -> void:
+	if from is CombatDummySpawner:
+		into.append(from)
+	for child: Node in from.get_children():
+		_collect_dummies(child, into)
+
+
+## El muñeco está en el mundo como un elemento pasivo, no como un enemigo: un
+## solo generador (si un segundo mundo montara otro, habría dos, como pasó con
+## el jugador), un cuerpo en la capa de los objetivos de golpe que expone su
+## cuerpo de combate, con su tinte de piedra y sin moverse ni pegar aunque el
+## jugador se le eche encima.
+func _dummy_exists_and_is_passive() -> void:
+	var spawner: CombatDummySpawner = _world().dummy_spawner
+	if not _context.check(spawner != null, "el mundo no tiene muñeco de combate"):
+		return
+	_clear_zone()
+	await _settle(2)
+
+	var found: Array = []
+	_collect_dummies(root, found)
+	_context.check(
+		found.size() == 1,
+		"hay %d muñecos en el árbol (se esperaba 1)" % found.size()
+	)
+
+	var view := spawner.view()
+	if not _context.check(
+		view != null and is_instance_valid(view), "el muñeco no tiene cuerpo"
+	):
+		return
+	_context.check(
+		view.collision_layer == CollisionLayers.NPC,
+		"el cuerpo está en la capa de los objetivos de golpe"
+	)
+	_context.check(
+		DamageRules.is_damageable(view.combat_target),
+		"y expone su cuerpo de combate como objetivo (la hitbox del jugador le pega)"
+	)
+	_context.check_equal(
+		spawner.dummy().kind, CombatDummy.KIND, "con su identidad de muñeco"
+	)
+	_context.check_equal(
+		spawner.dummy().health.ratio, 1.0, "con la vida llena al arrancar"
+	)
+
+	# Pasivo: ni se mueve solo ni le pega al jugador. Se observa un rato y las
+	# dos medidas tienen que quedarse quietas.
+	var start: Vector2 = view.global_position
+	var life: float = _game().session.player.health.current
+	for _frame: int in range(30):
+		await physics_frame
+	_context.check(
+		view.global_position.distance_to(start) < 0.5,
+		"el muñeco no se mueve solo"
+	)
+	_context.check(
+		_game().session.player.health.current >= life,
+		"y el jugador no recibe daño (el muñeco no pega)"
+	)
+	_context.check_equal(
+		view.modulate, GameConfig.DUMMY_TINT,
+		"y lleva el aspecto de muñeco, no el de un enemigo"
+	)
+
+
+## Un golpe de verdad del jugador (presentador encendido, sin atajos de prueba)
+## entra en el muñeco y le produce la cadena entera de la sección 33: la vida
+## baja, reproduce el clip de reacción, queda aturdido un instante y el retroceso
+## lo desplaza. El muñeco no devuelve nada.
+func _dummy_takes_a_hit_and_reacts() -> void:
+	var spawner: CombatDummySpawner = _world().dummy_spawner
+	if not _context.check(spawner != null, "el mundo no tiene muñeco de combate"):
+		return
+	var player := _player_or_report()
+	if player == null:
+		return
+	_clear_zone()
+
+	# Partida de cero para el jugador: el aturdimiento de otro caso deja bloqueado
+	# el movimiento, y la invulnerabilidad pendiente se drena con el reloj. Si no,
+	# las teclas no le moverían (es la fuga de estado que rompió un caso de F6).
+	var combat: MeleeCombat = _game().session.combat
+	combat.grant_invulnerability(0.0)
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	_game().movement.advance(1000.0)
+	_game().movement.external_velocity = Vector2.ZERO
+	_game().session.player.restore_stamina(float(GameConfig.PLAYER_MAX_STAMINA))
+	_game().session.player.heal(999.0)
+	# Los casos anteriores movieron al jugador y puede estar en cualquier lado: se
+	# lo acerca al muñeco por la vía única de teleportación (dominio y vista van
+	# juntos) para empezar a tiro. Si algún caso lo dejó muerto, se lo revive.
+	const APPROACH := Vector2(200.0, 202.0)
+	if _game().session.player.is_dead:
+		_game().session.respawn(APPROACH)
+	else:
+		_game().session.teleport_to(APPROACH)
+	await _settle(4)
+
+	var dummy := spawner.dummy()
+	var view := spawner.view()
+	var health_before: float = dummy.health.current
+	var start: Vector2 = view.global_position
+
+	# Se camina hacia el muñeco hasta quedar dentro del alcance del puñetazo; el
+	# propio cuerpo del muñeco para al jugador rozándolo (a 10 px, dentro del
+	# alcance 12 de la hitbox).
+	Input.action_press(&"move_down", 1.0)
+	var reached := false
+	var distance := player.global_position.distance_to(view.global_position)
+	for _frame: int in range(120):
+		await physics_frame
+		distance = player.global_position.distance_to(view.global_position)
+		if distance <= 11.5:
+			reached = true
+			break
+	Input.action_release(&"move_down")
+	await _settle(4)
+	if not _context.check(
+		reached, "el jugador no llegó a ponerse a tiro (se quedó a %.1f px)" % distance
+	):
+		return
+
+	# Puñetazo real, y muestreo desde el propio fotograma de la pulsación: la
+	# reacción y el aturdimiento son ventanas cortas y no se pueden mirar en un
+	# instante suelto.
+	var saw_reaction := false
+	var saw_stun := false
+	var max_displacement := 0.0
+	Input.action_press(&"attack", 1.0)
+	var swing := int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 12
+	for _frame: int in range(swing):
+		await physics_frame
+		if _frame == 1:
+			# El patrón probado: la pulsación dura dos fotogramas de física antes de
+			# soltarse, y el golpe arranca durante esos dos.
+			Input.action_release(&"attack")
+		if view.reaction_clip() != &"":
+			saw_reaction = true
+		if spawner.combat().is_stunned:
+			saw_stun = true
+		max_displacement = maxf(
+			max_displacement, view.global_position.distance_to(start)
+		)
+	await _settle(6)
+
+	_context.check(
+		dummy.health.current < health_before,
+		"el golpe del jugador entra (de %s a %s)" % [health_before, dummy.health.current]
+	)
+	_context.check(not dummy.is_dead, "y de un puñetazo no muere")
+	_context.check(saw_reaction, "reproduce el clip de reacción")
+	_context.check(saw_stun, "y queda aturdido un instante")
+	_context.check(
+		max_displacement > 1.0,
+		"y el retroceso lo desplaza (%.2f px)" % max_displacement
+	)
+	_context.check_equal(
+		_game().session.player.health.current,
+		_game().session.player.health.maximum,
+		"y el jugador no recibe nada a cambio"
+	)
+
+
+## La muerte del muñeco se ve (queda en la pose de muerte, apagado) y a los dos
+## segundos de `DUMMY_RESPAWN_TIME` reaparece entero en su puesto, con la vida
+## llena y sin tintes de estado encima.
+func _dummy_dies_and_respawns() -> void:
+	var spawner: CombatDummySpawner = _world().dummy_spawner
+	if not _context.check(spawner != null, "el mundo no tiene muñeco de combate"):
+		return
+	var combat := spawner.combat()
+	var dummy := spawner.dummy()
+	var view := spawner.view()
+	# El caso anterior lo dejó aturdido e invulnerable: se drena el reloj para que
+	# el golpe de prueba entre.
+	combat.advance(GameConfig.NPC_INVULNERABILITY_TIME + 1.0)
+
+	var dealt := combat.take_attack(
+		AttackCatalog.of(AttackCatalog.LEFT_HOOK), 999.0, Vector2.UP
+	)
+	_context.check(dealt > 0.0, "el golpe de prueba entra")
+	_context.check(dummy.is_dead, "y el muñeco muere")
+	# El golpe matador congela al presentador del muñeco con su hit stop (el tier
+	# alto son 0.07 s): hasta que ese reloj no se drena, `_sync_state` no corre y
+	# la vista no se entera de la muerte. Esperar el hit stop antes de mirarla.
+	var stop_frames := int(ceil(GameConfig.HIT_STOP_HEAVY * 60.0)) + 2
+	await _settle(stop_frames)
+	var actor := view.get_node_or_null("Actor") as ActorSprite
+	if actor != null:
+		_context.check_equal(actor.current_clip(), ActorSprite.DEAD, "en la pose de muerte")
+	_context.check(
+		view.modulate != GameConfig.DUMMY_TINT and view.modulate.a < 1.0,
+		"y la vista lo muestra apagado y casi transparente"
+	)
+
+	# La reaparición (opcional en la sección 33; aquí 2 s) la mueve el generador
+	# con su propio reloj de física: se espera la cuenta y vuelve entero al puesto.
+	var waited := 0
+	var cap := int(ceil(GameConfig.DUMMY_RESPAWN_TIME * 60.0)) + 8
+	var respawned := false
+	while not respawned and waited <= cap:
+		await physics_frame
+		waited += 1
+		respawned = (
+			dummy.is_alive
+			and view.global_position.distance_to(GameConfig.DUMMY_SPAWN) < 0.5
+		)
+	_context.check(
+		respawned,
+		"reaparece a los %d fotogramas (se esperaban %d)" % [
+			waited, int(ceil(GameConfig.DUMMY_RESPAWN_TIME * 60.0))
+		]
+	)
+	await _settle(6)
+	_context.check_equal(dummy.health.ratio, 1.0, "con la vida llena")
+	_context.check_equal(view.modulate, GameConfig.DUMMY_TINT, "y sin tintes de estado encima")

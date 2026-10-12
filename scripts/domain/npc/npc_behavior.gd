@@ -45,6 +45,29 @@ static func weak() -> NpcBehavior:
 	return NpcBehavior.new()
 
 
+## Muñeco de entrenamiento (sección 33): aguanta golpes y no responde.
+##
+## Cero en todo lo que mueve o ataca, más vida que un enemigo débil y nada de
+## defensa, para que cualquier golpe del jugador llegue entero. Con el alcance de
+## ataque en cero el cerebro nunca entra en ATTACK, y la velocidad en cero hace
+## que aunque alguien le diera objetivo la intención fuera nula: da igual lo que
+## se le reparta, el muñeco se queda quieto.
+static func dummy() -> NpcBehavior:
+	var behavior := NpcBehavior.new()
+	behavior.max_health = GameConfig.DUMMY_HEALTH
+	behavior.defense = GameConfig.DUMMY_DEFENSE
+	behavior.attack_damage = 0.0
+	behavior.attack_range = 0.0
+	behavior.attack_cooldown = 3600.0
+	behavior.move_speed = 0.0
+	behavior.aggro_radius = 0.0
+	behavior.leash_radius = 0.0
+	behavior.wander_radius = 0.0
+	behavior.wander_interval = 3600.0
+	behavior.flee_health_ratio = 0.0
+	return behavior
+
+
 ## Enemigo más duro: más vida, más daño y más rápido, a cambio de más defensa.
 static func strong() -> NpcBehavior:
 	var behavior := NpcBehavior.new()

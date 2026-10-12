@@ -425,6 +425,32 @@ const NPC_TINT_ROBBER := Color("5aa8ff")
 const NPC_TINT_BRUTE := Color("7fe06b")
 const NPC_TINT_GANGSTER := Color("ffe14d")
 
+# --- Muñeco de entrenamiento (seccion 33) ---
+## Interruptor del muñeco. Es un elemento del mundo con bandera propia, no un
+## enemigo: apagar `NPC_ENABLED` deja la zona sin enemigos pero conserva el
+## muñeco, que no estorba porque es pasivo. Encendido por defecto porque la demo
+## final (§63) lo necesita en la zona desde el arranque.
+const DUMMY_ENABLED := true
+## Vida y defensa del muñeco. Con unos cien píxeles de vida aguanta un par de
+## combos y muere: es un objetivo de prácticas, no un tanque, y una muerte
+## alcanzable es lo que permite probar la cadena completa golpe -> derribo ->
+## reaparición sin matarlo por accidente de un solo golpe.
+const DUMMY_HEALTH := 60.0
+const DUMMY_DEFENSE := 0.0
+## Segundos que tarda en reaparecer tras morir. Dos segundos dan tiempo a ver el
+## cuerpo caído y a volver a la posición de combate sin tener que esperar.
+const DUMMY_RESPAWN_TIME := 2.0
+## Puesto del muñeco: un palmo al sur del jugador (24 px, dentro del alcance de
+## la cámara y a una caminata corta del golpe). Es el puesto idóneo para la demo
+## §63: se avanza un paso, se le encara y se le pega.
+const DUMMY_SPAWN := Vector2(200, 224)
+## Tinte del muñeco: gris piedra, elegido sobre la paleta real de la hoja (negro
+## de contorno, verde pálido de ropa, blanco de piel) como las tintas de enemigo.
+## Gris desaturado para que no se confunda con ningún enemigo colorido ni con el
+## jugador sin teñir, y sin llegar al rojo/violeta de los estados ni al gris
+## apagado de la muerte.
+const DUMMY_TINT := Color("b6bac0")
+
 # --- HUD (seccion 8) ---
 ## Tamano de las barras de vida y stamina, y margenes respecto a la pantalla.
 const HUD_BAR_SIZE := Vector2(48, 4)
