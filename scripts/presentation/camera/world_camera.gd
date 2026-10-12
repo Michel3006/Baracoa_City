@@ -16,6 +16,13 @@ const FOLLOW_SMOOTHING := 8.0
 
 var _target: Node2D = null
 
+## Sacudida de imacto (sección 37): intensidad y tiempo restante. El
+## desplazamiento se aplica al `offset` de la cámara y se disuelve a cero, para
+## que el mundo vuelva donde estaba sin que el suavizado del seguimiento se
+## entere.
+var _shake_intensity: float = 0.0
+var _shake_time: float = 0.0
+
 
 func _ready() -> void:
 	zoom = Vector2.ONE * zoom_level
@@ -28,6 +35,43 @@ func follow(target: Node2D) -> void:
 	if _target != null:
 		global_position = _target.global_position
 		make_current()
+
+
+## Sacudida breve de la cámara. Se fusiona con `max`: cuando un golpe conecta,
+## el atacante y el que recibe emiten `impact_struck` en el mismo fotograma, y
+## las dos llamadas seguidas no deben temblar dos veces ni sumar la sacudida.
+## La que manda es la mayor de las dos.
+func shake(intensity: float) -> void:
+	if intensity <= 0.0:
+		return
+	_shake_intensity = maxf(_shake_intensity, intensity)
+	_shake_time = GameConfig.CAMERA_SHAKE_TIME
+
+
+## ¿La cámara está temblando ahora mismo?
+func is_shaking() -> bool:
+	return _shake_time > 0.0
+
+
+## Fuerza actual del temblor, de 0 a la intensidad con la que empezó. Decae en
+## línea recta hasta cero: al principio sacude de verdad y el final es un temblor
+## leve que no corta la lectura.
+func shake_strength() -> float:
+	return _shake_intensity * (_shake_time / GameConfig.CAMERA_SHAKE_TIME)
+
+
+## El temblor avanza con el reloj de la física (delta fijo), no con el de
+## render: es lo que permite a los tests esperar `physics_frame` un número
+## fijo de veces y saber cuánto ha menguado la sacudida.
+func _physics_process(delta: float) -> void:
+	if _shake_time <= 0.0:
+		return
+	_shake_time = maxf(0.0, _shake_time - delta)
+	if _shake_time <= 0.0:
+		_shake_intensity = 0.0
+		offset = Vector2.ZERO
+		return
+	offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * shake_strength()
 
 
 func apply_zone_bounds(area: Rect2) -> void:

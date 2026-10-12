@@ -59,6 +59,10 @@ func _run() -> void:
 	await _check("a puños el cuerpo usa el brazo dibujado", _unarmed_punch_uses_punch_arm)
 	await _check("la barra de golpe sigue el cooldown", _attack_bar_follows_the_cooldown)
 	await _check("el golpe usa la animación de su ataque", _attack_uses_its_own_animation)
+	await _check("la cámara tiembla al impacto y se queda quieta sola", _camera_shakes_on_impact)
+	await _check("un golpe recibido congela al presentador y se descongela solo", _hit_stop_freezes_and_drains)
+	await _check("el HUD de depuración se enciende, muestra y se apaga", _debug_hud_toggles_and_lines)
+	await _check("la geometría de debug sigue a la hitbox y conmuta con F2", _debug_hitboxes_geometry_and_toggle)
 
 	_report()
 	quit(0 if _failed == 0 else 1)
@@ -1217,3 +1221,165 @@ func _names(nodes: Array) -> String:
 	for node in nodes:
 		labels.append("%s(%s, padre %s)" % [node.name, node.get_instance_id(), node.get_parent().name])
 	return ", ".join(labels)
+
+
+## La cámara tiembla cuando un golpe conecta (sección 37), y el temblor se
+## disuelve solo. Se mide el cableado completo: la señal `impact_struck` del
+## combate llega al mundo y este pide la sacudida a la cámara.
+func _camera_shakes_on_impact() -> void:
+	var camera = _world().camera
+	if not _context.check(camera != null, "el mundo no tiene cámara"):
+		return
+	var combat: MeleeCombat = _game().session.combat
+	if not _context.check(combat != null, "la sesión no tiene combate"):
+		return
+	_clear_zone()
+	await _settle(15)
+	# Partida de cero, por si el caso anterior dejó al jugador aturdido o sin vida.
+	combat.grant_invulnerability(0.0)
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	_game().session.player.restore_stamina(float(GameConfig.PLAYER_MAX_STAMINA))
+	_game().session.player.heal(999.0)
+	camera.offset = Vector2.ZERO
+	await _settle(2)
+
+	# Sacudida directa: se pide y se disuelve al agotar el tiempo fijo.
+	camera.shake(GameConfig.CAMERA_SHAKE_HEAVY)
+	_context.check(camera.is_shaking(), "pedir la sacudida la enciende")
+	var frames := int(ceil(GameConfig.CAMERA_SHAKE_TIME * 60.0)) + 3
+	await _settle(frames)
+	_context.check(not camera.is_shaking(), "y se apaga sola al agotarse el tiempo")
+	_context.check_equal(camera.offset, Vector2.ZERO, "dejando el offset en cero")
+
+	# Sacudida por el cableado: un golpe que entra al jugador pasó por la señal
+	# que `connect_cases` conectó a la cámara.
+	var dealt := combat.take_attack(
+		AttackCatalog.of(AttackCatalog.LEFT_HOOK), 12.0, Vector2.LEFT
+	)
+	_context.check(dealt > 0.0, "el golpe entra al jugador")
+	_context.check(camera.is_shaking(), "y la cámara tiembla por el cableado del mundo")
+	await _settle(frames)
+
+
+## El hit stop llega al presentador con los presentadores encendidos, y el
+## congelamiento se agota solo con el reloj de la presentación: es el freeze de
+## verdad, no el contador de un test que avanza a mano.
+func _hit_stop_freezes_and_drains() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var presenter := player.get_node_or_null("Presenter") as PlayerPresenter
+	if not _context.check(presenter != null, "el jugador no tiene presentador"):
+		return
+	var combat: MeleeCombat = _game().session.combat
+	if not _context.check(combat != null, "la sesión no tiene combate"):
+		return
+
+	combat.grant_invulnerability(0.0)
+	combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	_game().session.player.restore_stamina(float(GameConfig.PLAYER_MAX_STAMINA))
+	_game().session.player.heal(999.0)
+	await _settle(2)
+
+	var dealt := combat.take_attack(
+		AttackCatalog.of(AttackCatalog.LEFT_HOOK), 12.0, Vector2.LEFT
+	)
+	_context.check(dealt > 0.0, "el golpe entra al jugador")
+	_context.check(presenter.is_hit_stopped(), "y el presentador queda congelado")
+	_context.check_almost_equal(
+		presenter.hit_stop_remaining(),
+		CombatImpact.hit_stop_of(AttackCatalog.of(AttackCatalog.LEFT_HOOK).knockback),
+		"con el tiempo del tier del ataque"
+	)
+
+	var waited := 0
+	while presenter.is_hit_stopped() and waited < 120:
+		await physics_frame
+		waited += 1
+	_context.check(not presenter.is_hit_stopped(), "y se descongela solo al agotarse")
+	_context.check(waited < 120, "el descongelado no necesitó el límite de espera")
+
+
+## El HUD de depuración (sección 34) se enciende, muestra las líneas de la
+## sección y se apaga, tanto por su API como por la tecla F1 a través del mundo.
+func _debug_hud_toggles_and_lines() -> void:
+	var hud = _world().hud
+	if not _context.check(hud != null, "el mundo no tiene HUD"):
+		return
+
+	hud.set_debug_enabled(true)
+	_context.check(hud.is_debug_enabled(), "el HUD de depuración se enciende")
+	var lines: Array[String] = hud.debug_lines()
+	_context.check(
+		lines.size() >= 8,
+		"el HUD de depuración no trae las líneas de la sección 34: %d" % lines.size()
+	)
+	if lines.size() > 0:
+		_context.check(
+			str(lines[0]).begins_with("HP:"), "la primera línea es la vida: %s" % lines[0]
+		)
+	_context.check(
+		lines.any(func(line: String) -> bool: return line.begins_with("COMBO:")),
+		"y hay línea de combo en %s" % str(lines)
+	)
+	_context.check(
+		lines.any(func(line: String) -> bool: return line.begins_with("STATE:")),
+		"y línea de estado"
+	)
+
+	# F1 conmuta desde el mundo: se entrega el evento a mano, porque el driver
+	# headless no reparte eventos de teclado.
+	var f1 := InputEventKey.new()
+	f1.physical_keycode = KEY_F1
+	f1.pressed = true
+	_world()._unhandled_input(f1)
+	await _settle(1)
+	_context.check(not hud.is_debug_enabled(), "pulsar F1 apaga el HUD de depuración")
+	hud.set_debug_enabled(false)
+
+
+## La geometría de depuración (sección 35) es la de la física: el círculo de la
+## hitbox sale delante del cuerpo, hacia la mirada, con la distancia y el radio
+## que usa `HitboxSensor`. Y F2 conmuta el dibujo global desde el mundo.
+func _debug_hitboxes_geometry_and_toggle() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var hitbox := player.hitbox
+	if not _context.check(hitbox != null, "el jugador no tiene hitbox"):
+		return
+	_clear_zone()
+	await _settle(2)
+
+	player.set_facing(Vector2.RIGHT)
+	await _settle(1)
+	var circle := CombatDebug.hitbox_circle(player)
+	var expected_center: Vector2 = player.global_position \
+		+ Vector2.RIGHT * hitbox.reach * GameConfig.HITBOX_FORWARD_RATIO
+	_context.check_almost_equal(
+		float(Vector2(circle["center"]).distance_to(expected_center)),
+		0.0,
+		"el centro de la hitbox sale delante, hacia la mirada"
+	)
+	_context.check_almost_equal(
+		float(circle["radius"]),
+		hitbox.reach * GameConfig.HITBOX_RADIUS_RATIO,
+		"y su radio es el de la geometría del golpe"
+	)
+	_context.check_almost_equal(
+		float(CombatDebug.hurtbox_circle(player)["radius"]),
+		player.hurtbox_radius(),
+		"la hurtbox dibuja el radio del cuerpo"
+	)
+
+	# F2 conmuta el interruptor global; se devuelve al final para no dejar el
+	# mundo dibujando en depuración para los casos siguientes.
+	var before := CombatDebug.show
+	var f2 := InputEventKey.new()
+	f2.physical_keycode = KEY_F2
+	f2.pressed = true
+	_world()._unhandled_input(f2)
+	await _settle(1)
+	_context.check_equal(CombatDebug.show, not before, "pulsar F2 conmuta el dibujo de hitboxes")
+	if CombatDebug.show != before:
+		CombatDebug.toggle()

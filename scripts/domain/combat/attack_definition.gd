@@ -85,6 +85,20 @@ var can_cancel: bool = false
 ## Prioridad para resolver dos ataques simultáneos (sección 8).
 var priority: int = 0
 
+## Hit stop que produce este golpe (sección 36), en segundos. Propiedad derivada
+## del tier de knockback: el tier ya es la medida del golpe, así que no se
+## duplica el número en el catálogo y `low`/`medium`/`high` se traducen en un
+## solo sitio (`CombatImpact`).
+var hit_stop: float:
+	get:
+		return CombatImpact.hit_stop_of(knockback)
+
+## Sacudida de cámara de este golpe (sección 37), en píxeles. Del mismo tier y
+## por la misma razón que `hit_stop`.
+var camera_shake: float:
+	get:
+		return CombatImpact.shake_of(knockback)
+
 
 func _init(values: Dictionary = {}) -> void:
 	for field: String in FIELDS:

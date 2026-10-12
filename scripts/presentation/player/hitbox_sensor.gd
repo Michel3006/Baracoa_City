@@ -63,6 +63,13 @@ func face(direction: Vector2) -> void:
 	_place()
 
 
+## Hacia dónde apunta el sensor (vector normalizado). Lo usa el dibujo de
+## depuración para colocar el área de ataque sobre el mundo, y los tests de
+## geometría para comprobar que la hitbox mira adonde mira el cuerpo.
+func direction() -> Vector2:
+	return _direction
+
+
 ## Enciende o apaga el sensor. El uso diferido es obligatorio: cambiar
 ## `monitoring` dentro de la física avisa de error.
 func set_active(value: bool) -> void:

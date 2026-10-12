@@ -37,6 +37,11 @@ signal stun_changed(active: bool)
 ## para las dos puntas del golpe.
 signal reaction_started(clip: StringName, duration: float)
 signal reaction_finished()
+## Impacto conectado (secciones 36-38), gemela de la de `MeleeCombat`: solo se
+## emite cuando el daño entra, con el tier deducido del daño (los NPC no llevan
+## catálogo de ataques). El presentador la oye para el hit stop y la cámara para
+## la sacudida, igual que con el jugador.
+signal impact_struck(tier: StringName)
 
 var npc: Npc
 var behavior: NpcBehavior
@@ -189,6 +194,7 @@ func strike(targets: Array) -> int:
 		if dealt > 0.0:
 			hits += 1
 			target_hit.emit(damageable, dealt)
+			impact_struck.emit(CombatReaction.knockback_of(null, dealt))
 	return hits
 
 
@@ -264,6 +270,7 @@ func _receive_computed(amount: float, impact: Vector2, source: Object) -> float:
 	grant_invulnerability()
 	apply_stun()
 	damaged.emit(dealt, source)
+	impact_struck.emit(CombatReaction.knockback_of(null, dealt))
 	if not npc.is_dead:
 		_start_reaction(dealt, impact)
 	return dealt

@@ -243,3 +243,48 @@ func _refresh_animation() -> void:
 		_actor.play(ActorSprite.WALK)
 		return
 	_actor.play(ActorSprite.IDLE)
+
+
+## Radio de la zona que un golpe puede alcanzar de este cuerpo. Lo lee el dibujo
+## de depuración (`CombatDebug`) para pintar la hurtbox sobre el mundo, igual
+## que en `PlayerView`.
+func hurtbox_radius() -> float:
+	return BODY_RADIUS
+
+
+## Mientras el dibujo de depuración está activo hay que refrescarlo cada
+## fotograma: el enemigo se mueve (lo mueve su presentador), y un overlay que no
+## sigue al cuerpo no sirve para calibrar nada.
+func _process(_delta: float) -> void:
+	if CombatDebug.show:
+		queue_redraw()
+
+
+## Dibujo de depuración (sección 35): el mismo vocabulario que el del jugador,
+## con la misma geometría. Apagado no dibuja nada.
+func _draw() -> void:
+	if not CombatDebug.show:
+		return
+	var hurtbox := CombatDebug.hurtbox_circle(self)
+	draw_arc(Vector2.ZERO, float(hurtbox["radius"]), 0.0, TAU, 24, GameConfig.DEBUG_HURTBOX_COLOR, 1.0)
+	var hitbox_shape := CombatDebug.hitbox_circle(self)
+	var hitbox_center: Vector2 = Vector2(hitbox_shape["center"]) - global_position
+	var hitbox_radius := float(hitbox_shape["radius"])
+	draw_arc(hitbox_center, hitbox_radius, 0.0, TAU, 24, GameConfig.DEBUG_HITBOX_COLOR, 1.0)
+	if hitbox_radius > 0.0:
+		var reach := hitbox_radius / GameConfig.HITBOX_RADIUS_RATIO
+		var area_center := _facing * reach * 0.5
+		if hitbox != null and hitbox.is_active:
+			draw_circle(area_center, reach * 0.6, Color(GameConfig.DEBUG_ATTACK_AREA_COLOR, 0.25))
+		else:
+			draw_arc(area_center, reach * 0.6, 0.0, TAU, 24, GameConfig.DEBUG_ATTACK_AREA_COLOR, 1.0)
+	if not _facing.is_zero_approx():
+		draw_line(
+			Vector2.ZERO,
+			_facing.normalized() * (float(hurtbox["radius"]) + 8.0),
+			GameConfig.DEBUG_DIRECTION_COLOR,
+			1.0
+		)
+	for body: Node2D in CombatDebug.reached_targets(self):
+		var point: Vector2 = body.global_position - global_position
+		draw_rect(Rect2(point - Vector2(2.0, 2.0), Vector2(4.0, 4.0)), GameConfig.DEBUG_REACHED_COLOR)

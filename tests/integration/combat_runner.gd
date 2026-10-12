@@ -87,6 +87,9 @@ func _run() -> void:
 	await _check("a puños no sale arco", _no_slash_unarmed)
 	await _check("el golpe recibido levanta su reacción en la vista", _reaction_reaches_the_view)
 	await _check("el empuje del golpe mueve el cuerpo", _knockback_moves_the_body)
+	await _check("el impacto del golpe llega al presentador", _impact_struck_reaches_the_presenter)
+	await _check("un golpe bloqueado no congela nada", _blocked_impact_does_not_reach_the_presenter)
+	await _check("el golpe del jugador congela y suelta el burst", _hit_stop_and_impact_fire_when_striking)
 
 	_cleanup()
 	_report()
@@ -140,12 +143,24 @@ func _settle(frames: int = 3) -> void:
 
 
 ## Deja el combate en un estado conocido: sin cooldown, sin aturdimiento y sin
-## invulnerabilidad, para que cada caso parta de cero.
+## invulnerabilidad, para que cada caso parta de cero. El presentador (apagado en
+## toda la suite) puede llevar un congelamiento de impacto de un caso anterior,
+## y como apagado nadie descuenta ese reloj, también se le limpia: si no, un caso
+## nuevo mediría el congelamiento del anterior.
+##
+## El bloqueo del movimiento es la misma clase de fuga: un aturdimiento lo pone
+## (`block_for`) y solo lo descuenta el presentador del jugador, que aquí está
+## apagado. Sin drenarlo, el siguiente caso hereda un jugador clavado que no
+## actualiza la orientación aunque las teclas se pulsen.
 func _reset_combat() -> void:
 	var combat := _combat()
 	combat.grant_invulnerability(0.0)
 	combat.advance(GameConfig.INVULNERABILITY_TIME + 1.0)
 	combat.advance(GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	_presenter()._hit_stop_remaining = 0.0
+	var movement: MovementController = _game().movement
+	movement.advance(1000.0)
+	movement.external_velocity = Vector2.ZERO
 
 
 ## Coloca un objetivo cuerpo a cuerpo a `offset` del jugador y lo devuelve.
@@ -483,3 +498,112 @@ func _knockback_moves_the_body() -> void:
 		(_player().global_position - settled).length() < 0.5,
 		"y al agotarse deja de moverse"
 	)
+
+
+## El hit stop (sección 36) no depende del reloj de la presentación: el presentador
+## lo recibe por la señal `impact_struck` del propio combate, así que aunque esté
+## apagado se le pone el contador. Es lo que hace que el freeze funcione igual en
+## un test que con los presentadores encendidos.
+func _impact_struck_reaches_the_presenter() -> void:
+	_reset_combat()
+	var combat := _combat()
+	var presenter := _presenter()
+	_player().set_facing(Vector2.DOWN)
+	var attack := AttackCatalog.of(AttackCatalog.LEFT_HOOK)
+
+	var dealt := combat.take_attack(attack, 12.0, Vector2.UP)
+
+	_context.check(dealt > 0.0, "el golpe entra")
+	_context.check(presenter.is_hit_stopped(), "el presentador se congela")
+	_context.check_almost_equal(
+		presenter.hit_stop_remaining(),
+		CombatImpact.hit_stop_of(attack.knockback),
+		"con el tiempo del tier del ataque (%s)" % attack.knockback
+	)
+
+
+## Bloqueado no hay hit stop: el golpe entró en la guardia, no en el cuerpo, y no
+## hay nada que congelar. Un freeze al bloquear se notaría en que el mundo se
+## detiene sin daño, que es justo lo que la sección 40 no quiere.
+func _blocked_impact_does_not_reach_the_presenter() -> void:
+	_reset_combat()
+	var combat := _combat()
+	var presenter := _presenter()
+	_player().set_facing(Vector2.DOWN)
+	combat.set_blocking(true)
+
+	var dealt := combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.UP)
+
+	_context.check_equal(dealt, 0.0, "de frente el golpe no entra")
+	_context.check(not presenter.is_hit_stopped(), "y el presentador no se congela")
+
+
+## El golpe del jugador dispara la cadena entera: el presentador lo saca por la
+## tecla (presentadores encendidos), la ventana se abre, el golpe conecta, el
+## presentador se congela los milisegundos del tier y la capa de efectos recibe el
+## burst de partículas.
+func _hit_stop_and_impact_fire_when_striking() -> void:
+	_reset_combat()
+	# Sin enemigos: un golpe de un NPC al jugador también dispara `impact_struck`
+	# (por el lado que recibe) y confundiría el caso, que quiere medir el golpe
+	# que DA el jugador.
+	_pacify_npcs()
+	var layer: Node2D = _game().world_view.fx_layer
+	if not _context.check(layer != null, "la capa de efectos existe"):
+		return
+	await _drain_fx(layer)
+
+	_spawn_target(Vector2(12.0, 0.0))
+	await _settle()
+
+	var combat := _combat()
+	var connected: Array[bool] = [false]
+	combat.impact_struck.connect(func(_tier: StringName) -> void: connected[0] = true)
+
+	# Mirar a la derecha como haría el jugador y atacar con la tecla: el
+	# presentador enciende la hitbox solo y la ventana golpea al muñeco.
+	_presenter().set_physics_process(true)
+	Input.action_press(&"move_right")
+	await _settle(2)
+	Input.action_release(&"move_right")
+	await _settle()
+
+	Input.action_press(&"attack")
+	var waited := 0
+	while not connected[0] and waited < 120:
+		await physics_frame
+		waited += 1
+	Input.action_release(&"attack")
+
+	_context.check(connected[0], "el impacto se conecta al golpear")
+	_context.check(_presenter().is_hit_stopped(), "y el presentador queda congelado")
+	_context.check(layer.get_child_count() > 0, "y la capa de efectos tiene el burst")
+	var impact: Node = null
+	for child: Node in layer.get_children():
+		if child is ImpactEffect:
+			impact = child
+			break
+	_context.check(impact != null, "y entre los efectos hay uno de impacto")
+
+	# El congelamiento se agota solo con el reloj del presentador encendido.
+	var drained := 0
+	while _presenter().is_hit_stopped() and drained < 120:
+		await physics_frame
+		drained += 1
+	_presenter().set_physics_process(false)
+
+	_context.check(not _presenter().is_hit_stopped(), "y se descongela solo al agotarse")
+	await _drain_fx(layer)
+	_cleanup()
+
+
+## Deja la zona sin enemigos vivos, para que los casos que miden al jugador no se
+## peleen con la IA: un NPC que golpee al jugador dispara `impact_struck` por el
+## lado que recibe, y un caso que mida el golpe que da el jugador lo confundiría.
+func _pacify_npcs() -> void:
+	var session: RefCounted = _game().session
+	if session == null or session.get("npcs") == null:
+		return
+	for agent in session.get("npcs").agents:
+		if not agent.npc.is_dead:
+			agent.npc.take_damage(agent.npc.health.maximum)

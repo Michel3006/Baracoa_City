@@ -12,8 +12,31 @@ extends RefCounted
 const DELTA := 1.0 / 60.0
 
 
+## Objetivo de mentira para los golpes del NPC, con la misma piel que el de
+## `test_melee_combat`: vida y defensa, solo `take_damage`.
+class Dummy extends RefCounted:
+	var stats: CharacterStats
+	var health: Health
+	var is_dead: bool = false
+
+	func _init(health_value: float = 40.0, defense: float = 0.0) -> void:
+		stats = CharacterStats.new({"defense": defense})
+		health = Health.new(health_value)
+
+	func take_damage(amount: float) -> float:
+		return health.apply_damage(amount)
+
+
 func _combat() -> NpcCombat:
 	return NpcCombat.new(Npc.new(1, "Slime", NpcBehavior.new()))
+
+
+## Deja la ventana de impacto del NPC abierta, avanzando el reloj a mano.
+func _open_window(combat: NpcCombat) -> void:
+	var guard := 0
+	while not combat.is_window_open and combat.is_attacking and guard < 300:
+		combat.advance(DELTA)
+		guard += 1
 
 
 func register() -> Array:
@@ -23,6 +46,9 @@ func register() -> Array:
 		["el cuerpo de combate es un objetivo válido para DamageRules", _combat_body_is_damageable],
 		["un cuerpo de combate muerto ya no es objetivo", _dead_combat_body_ignored],
 		["la señal de aturdimiento sube y baja", _stun_signal_sube_y_baja],
+		["el golpe del NPC que entra emite el impacto con su tier", _strike_announces_the_impact],
+		["recibir daño emite el impacto deducido del daño", _receiving_damage_announces_impact],
+		["un golpe a un invulnerable no emite impacto", _silent_hits_emit_nothing],
 	]
 
 
@@ -91,3 +117,45 @@ func _stun_signal_sube_y_baja(ctx: ScriptTestContext) -> void:
 	combat.advance(combat.npc.behavior.hurt_stun_time + DELTA)
 	ctx.check_equal(changes, [true, false], "al expirar avisa de que baja")
 	ctx.check(not combat.is_stunned, "y ya no está aturdido")
+
+
+## La señal de impacto del NPC es la gemela de la del jugador: sale al golpear,
+## con el tier deducido del daño que hace (los NPC no llevan catálogo de ataques,
+## igual que deducen el de los golpes que reciben).
+func _strike_announces_the_impact(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var tiers: Array[StringName] = []
+	combat.impact_struck.connect(func(tier: StringName) -> void: tiers.append(tier))
+
+	ctx.check(combat.try_attack(Vector2.RIGHT), "el golpe del NPC sale")
+	_open_window(combat)
+	ctx.check_equal(combat.strike([Dummy.new()]), 1, "y entra en el muñeco")
+	ctx.check_equal(
+		tiers,
+		[CombatReaction.TIER_LOW],
+		"con el tier del daño que hace (4 < 8 -> low)"
+	)
+
+
+## Recibir daño también avisa, igual que en `MeleeCombat`.
+func _receiving_damage_announces_impact(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var tiers: Array[StringName] = []
+	combat.impact_struck.connect(func(tier: StringName) -> void: tiers.append(tier))
+
+	ctx.check_equal(combat.take_damage(10.0), 10.0, "el golpe entra")
+	ctx.check_equal(tiers, [CombatReaction.TIER_MEDIUM], "deducido del daño (10 -> medium)")
+
+
+## Invulnerable no se emite: el golpe no entró y no hay nada que congelar. La
+## señal se cuenta, no solo se comprueba su valor, porque un falso aviso temblaría
+## sin golpe.
+func _silent_hits_emit_nothing(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var tiers: Array[StringName] = []
+	combat.impact_struck.connect(func(tier: StringName) -> void: tiers.append(tier))
+
+	ctx.check_equal(combat.take_damage(5.0), 5.0, "el primer golpe entra")
+	ctx.check_equal(tiers.size(), 1, "y avisa una vez")
+	ctx.check_equal(combat.take_damage(5.0), 0.0, "el segundo cae en la invulnerabilidad")
+	ctx.check_equal(tiers.size(), 1, "y no vuelve a avisar")

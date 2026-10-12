@@ -35,6 +35,14 @@ var _presenters: Dictionary = {}
 ## inyecta `MainWorldView.setup_npcs()`.
 var _fx_parent: Node2D = null
 
+## Receptor de los impactos de los enemigos (sección 37). Lo inyecta
+## `MainWorldView` y lo comparte la cámara con el del jugador: cada
+## `NpcCombat` que conecta un golpe avisa por aquí.
+var _impact_sink: Callable = Callable()
+## Combates ya conectados al relevo, para que `set_impact_sink` y los agentes
+## que llegan después no dupliquen la conexión.
+var _impact_bound: Dictionary = {}
+
 
 func _ready() -> void:
 	z_index = NPC_Z_INDEX
@@ -87,6 +95,7 @@ func _on_agent_ready(id: int, npc: Npc, brain: NpcBrain, combat: NpcCombat) -> v
 	view.add_child(presenter)
 	presenter.setup(view, npc, brain, combat)
 	presenter.set_fx_parent(_fx_parent)
+	_bind_impact(presenter)
 	_presenters[id] = presenter
 
 
@@ -99,6 +108,34 @@ func set_fx_parent(node: Node2D) -> void:
 	_fx_parent = node
 	for presenter: NpcPresenter in _presenters.values():
 		presenter.set_fx_parent(_fx_parent)
+
+
+## Receptor de los impactos de los enemigos (sección 37).
+##
+## Igual que `set_fx_parent`: vale tanto para los presentadores que ya existen como
+## para los que se creen después, y repetir la llamada no duplica conexiones
+## (`_impact_bound` lo impide).
+func set_impact_sink(sink: Callable) -> void:
+	_impact_sink = sink
+	for presenter: NpcPresenter in _presenters.values():
+		_bind_impact(presenter)
+
+
+## Conecta el impacto del combate de un enemigo al relevo que llega a la cámara.
+func _bind_impact(presenter: NpcPresenter) -> void:
+	var combat := presenter.combat()
+	if combat == null or _impact_bound.has(combat):
+		return
+	_impact_bound[combat] = true
+	combat.impact_struck.connect(_relay_impact)
+
+
+## Releva el impacto de un enemigo al receptor común. Si nadie ha inyectado receptor
+## todavía (orden entre `bind()` y `set_impact_sink`), la señal se ignora y no pasa
+## nada: el jugador ya tiembla por su cuenta.
+func _relay_impact(tier: StringName) -> void:
+	if _impact_sink.is_valid():
+		_impact_sink.call(tier)
 
 
 ## Un NPC ha muerto. El cuerpo se queda congelado en pantalla, que es la lectura

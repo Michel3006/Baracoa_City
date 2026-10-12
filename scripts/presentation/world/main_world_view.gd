@@ -40,6 +40,45 @@ var npc_spawner: NpcSpawner = null
 var fx_layer: Node2D = null
 
 
+## Acciones de depuración (secciones 34-35): F1 conmuta el HUD de depuración y
+## F2 el dibujado de hitboxes. Van aquí porque son teclas de la escena, no del
+## combate: quien las pulsa está en el mundo.
+const ACTION_DEBUG_HUD := &"debug_hud"
+const ACTION_DEBUG_HITBOXES := &"debug_hitboxes"
+
+## Receptor de los impactos de los enemigos: cada `NpcCombat` que conecta un
+## golpe avisa por aquí. El del jugador se conecta directamente en
+## `connect_cases`; los dos caen al mismo `shake` fusionado de la cámara.
+func _on_npc_impact_struck(tier: StringName) -> void:
+	if camera != null:
+		camera.shake(CombatImpact.shake_of(tier))
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(ACTION_DEBUG_HUD):
+		if hud != null:
+			hud.set_debug_enabled(not hud.is_debug_enabled())
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed(ACTION_DEBUG_HITBOXES):
+		CombatDebug.toggle()
+		_refresh_debug_draw()
+		get_viewport().set_input_as_handled()
+
+
+## Al conmutar el dibujo de hitboxes hay que forzar un redibujado de todos los
+## cuerpos: encender sin redibujar no enseñaría nada, y apagar sin redibujar
+## dejaría pintado el último fotograma.
+func _refresh_debug_draw() -> void:
+	if player != null:
+		player.queue_redraw()
+	if npc_spawner != null:
+		for presenter: NpcPresenter in npc_spawner.presenters():
+			var view := presenter.get_parent() as NpcView
+			if view != null:
+				view.queue_redraw()
+
+
 func _ready() -> void:
 	_build_world()
 	_build_camera()
@@ -116,6 +155,10 @@ func setup_npcs(director: NpcDirector) -> void:
 	# El arco del enemigo se suelta en la misma capa que el del jugador. El
 	# `fx_layer` ya existe: `_ready()` monta el mundo antes de que nadie llame aquí.
 	npc_spawner.set_fx_parent(fx_layer)
+	# La sacudida de cámara también llega por los enemigos: cuando un NPC conecta
+	# un golpe o lo recibe, su `NpcCombat` avisa y la cámara tiembla igual que con
+	# el jugador.
+	npc_spawner.set_impact_sink(_on_npc_impact_struck)
 
 
 ## Inyecta los casos de uso del jugador. Lo llama la capa Application.
@@ -132,9 +175,22 @@ func connect_cases(movement: MovementController, combat: MeleeCombat = null) -> 
 		# El HUD enseña el arma del golpe en curso, que puede ser a puños aunque la
 		# equipada siga en la mano.
 		combat.attack_started.connect(_on_attack_started)
+		# La cámara tiembla cuando el combate del jugador conecta un golpe o lo
+		# recibe (sección 37). La sacudida se fusiona con la de los enemigos en
+		# `WorldCamera.shake`, así que dos impactos del mismo frame no tiemblan
+		# dos veces.
+		combat.impact_struck.connect(_on_combat_impact_struck)
 	presenter.set_fx_parent(fx_layer)
 	if hud != null and combat != null:
 		hud.set_weapon(combat.weapon)
+	if hud != null:
+		# El HUD de depuración lee animación y dirección del jugador de pantalla.
+		hud.bind_debug(player)
+
+
+func _on_combat_impact_struck(tier: StringName) -> void:
+	if camera != null:
+		camera.shake(CombatImpact.shake_of(tier))
 
 
 ## Desplaza al jugador. En Fase 2 sustituir por cambio de zona validado en servidor.

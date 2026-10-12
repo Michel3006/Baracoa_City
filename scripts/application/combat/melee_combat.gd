@@ -56,6 +56,12 @@ signal block_changed(active: bool)
 ## ser `null` cuando el atacante no traía uno). El atacante ve `target_hit`; el
 ## defensor ve esto.
 signal attack_received(result: StringName, attack: AttackDefinition)
+## Impacto conectado (secciones 36-38): lo emite este cuerpo tanto al dar como
+## al recibir, con el tier del golpe (`low`/`medium`/`high`). La presentación lo
+## usa para el hit stop, la sacudida de cámara y el burst de partículas. Solo se
+## emite cuando el golpe entra de verdad: bloqueado, esquivado o invulnerable no
+## se emite, porque no hay nada que congelar ni que celebrar.
+signal impact_struck(tier: StringName)
 
 const REASON_DEAD := &"dead"
 const REASON_BUSY := &"busy"
@@ -606,6 +612,7 @@ func strike(targets: Array, used_unarmed: bool = false) -> int:
 		if dealt > 0.0:
 			hits += 1
 			target_hit.emit(damageable, dealt)
+			impact_struck.emit(attack.knockback)
 	return hits
 
 
@@ -710,6 +717,10 @@ func _receive_computed(
 	grant_invulnerability()
 	apply_stun()
 	damaged.emit(dealt, source)
+	# El defensor también avisa del impacto, con el tier deducido del daño si el
+	# atacante no traía ataque. Es la misma señal que emite el atacante al
+	# conectar: los dos lados del golpe congelan el mundo juntos.
+	impact_struck.emit(CombatReaction.knockback_of(attack, dealt))
 	if not player.is_dead:
 		_start_reaction(attack, dealt, impact)
 	return dealt

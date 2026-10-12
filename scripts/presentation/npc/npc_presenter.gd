@@ -26,6 +26,10 @@ var _struck: Array[Object] = []
 ## de efectos del mundo; sin él no hay arco, pero el resto del combate funciona.
 var _fx_parent: Node2D = null
 
+## Hit stop (sección 36), igual que en `PlayerPresenter`: mientras dura, este
+## presentador no avanza el reloj del combate ni mueve el cuerpo.
+var _hit_stop_remaining: float = 0.0
+
 
 func setup(view: NpcView, npc: Npc, brain: NpcBrain, combat: NpcCombat) -> void:
 	_view = view
@@ -54,10 +58,17 @@ func setup(view: NpcView, npc: Npc, brain: NpcBrain, combat: NpcCombat) -> void:
 		_combat.reaction_started.connect(_on_reaction_started)
 		_combat.reaction_finished.connect(_on_reaction_finished)
 		_combat.died.connect(_on_died)
+		_combat.impact_struck.connect(_on_impact_struck)
 
 
 func npc() -> Npc:
 	return _npc
+
+
+## Cuerpo de combate que mueve este presentador. Lo consulta quien lo dirige
+## para enchufar señales sin tener que adivinar campos privados.
+func combat() -> NpcCombat:
+	return _combat
 
 
 ## Dónde se sueltan los efectos de golpe. Lo inyecta el generador de NPC con la capa
@@ -67,6 +78,10 @@ func set_fx_parent(node: Node2D) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Hit stop: igual que el del jugador, primero y sin tocar nada más.
+	if _hit_stop_remaining > 0.0:
+		_hit_stop_remaining = maxf(0.0, _hit_stop_remaining - delta)
+		return
 	if _view == null or _npc == null:
 		return
 	_combat.advance(delta)
@@ -136,7 +151,33 @@ func _strike_visible_targets() -> void:
 		if target == null or target in _struck:
 			continue
 		_struck.append(target)
-		_combat.strike([target])
+		var hits := _combat.strike([target])
+		if hits > 0:
+			_spawn_impact(body.global_position)
+
+
+## Burst de impacto del golpe del enemigo. Los NPC no llevan catálogo de
+## ataques, así que el tier se deduce del daño que hacen, igual que deduce
+## `NpcCombat` el del golpe que reciben.
+func _spawn_impact(point: Vector2) -> void:
+	if _fx_parent == null or _view == null or _npc == null:
+		return
+	var tier := CombatReaction.knockback_of(null, _npc.behavior.attack_damage)
+	ImpactEffect.spawn(_fx_parent, point, _view.facing(), tier)
+
+
+## ¿Está el mundo congelado por un impacto? Lo consultan los tests.
+func is_hit_stopped() -> bool:
+	return _hit_stop_remaining > 0.0
+
+
+## Cuánto le queda al hit stop.
+func hit_stop_remaining() -> float:
+	return _hit_stop_remaining
+
+
+func _on_impact_struck(tier: StringName) -> void:
+	_hit_stop_remaining = maxf(_hit_stop_remaining, CombatImpact.hit_stop_of(tier))
 
 
 ## Igual que en el jugador: la física solo dice a quién ha tocado, y el cuerpo

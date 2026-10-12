@@ -176,6 +176,37 @@ const HITBOX_FORWARD_RATIO := 0.55
 const PLAYER_STAMINA_REGEN := 18.0
 const STAMINA_REGEN_DELAY := 0.4
 
+# --- Impacto (secciones 36-38) ---
+## Hit stop por tier de la sección 29: el mundo se congela un instante al
+## conectar el golpe. Los rangos pedidos son light 30-45 ms, medium 45-60 ms y
+## heavy 60-80 ms, y los tres valores viven dentro de ellos. Es un freeze de la
+## presentación (el reloj del combate no avanza mientras dura), no del dominio:
+## los unitarios mueven el reloj a mano, y en Fase 2 el servidor no se congela.
+const HIT_STOP_LIGHT := 0.035
+const HIT_STOP_MEDIUM := 0.05
+const HIT_STOP_HEAVY := 0.07
+## Sacudida de cámara al conectar un golpe (sección 37), en píxeles de
+## desplazamiento máximo por tier. Light apenas tiembla y heavy sacude de
+## verdad, sin llegar a marear: el temblor se disuelve a cero durante
+## `CAMERA_SHAKE_TIME` y solo ocurre cuando el golpe entra (no al fallar, ni al
+## bloquear, ni al esquivar).
+const CAMERA_SHAKE_LIGHT := 2.0
+const CAMERA_SHAKE_MEDIUM := 4.0
+const CAMERA_SHAKE_HEAVY := 7.0
+const CAMERA_SHAKE_TIME := 0.12
+## Partículas del burst de impacto (sección 38): light unas pocas chispas y
+## heavy una lluvia corta. El número en sí se ajusta jugando; lo que no cambia
+## es el orden: light < medium < heavy.
+const IMPACT_PARTICLES_LIGHT := 4
+const IMPACT_PARTICLES_MEDIUM := 7
+const IMPACT_PARTICLES_HEAVY := 12
+## Vida de un burst de impacto y del fogonazo del punto de contacto.
+const IMPACT_LIFE := 0.18
+const IMPACT_FLASH_TIME := 0.08
+## Colores del impacto: fogonazo blanco-amarillo y chispas de píxel.
+const IMPACT_FLASH_COLOR := Color("fff3c4")
+const IMPACT_PARTICLE_COLOR := Color("ffd9a0")
+
 # --- Combate sin arma (puños) ---
 ## El jugador siempre puede golpear a puños, tenga o no arma en la mano. Es un
 ## "arma" degenerada: sin textura, sin durabilidad y con el alcance de un brazo.
@@ -414,6 +445,24 @@ const HURT_TINT := Color("ff6b6b")
 ## Si se apagara el rojo mientras dura el aturdimiento, un golpe aturdidor pasaría
 ## sin tinte hasta el final de la ventana.
 const STUN_TINT := Color("a78bfa")
+
+# --- Depuración de combate (secciones 34-35) ---
+## Pantalla de depuración del combate, conmutable en caliente (F1). Apagada por
+## defecto: el HUD solo enseña lo que se juega, y esto es herramienta, no
+## contenido.
+const SHOW_HUD_DEBUG := false
+## Dibujado de hurtboxes, hitboxes y dirección sobre el mundo (F2). Apagada por
+## defecto por la misma razón.
+const SHOW_COMBAT_DEBUG := false
+## Colores del dibujo de depuración: hurtbox, hitbox, dirección de la mirada,
+## área de ataque y objetivo ya alcanzado.
+const DEBUG_HURTBOX_COLOR := Color(1.0, 1.0, 1.0, 0.55)
+const DEBUG_HITBOX_COLOR := Color("ff6b6b")
+const DEBUG_DIRECTION_COLOR := Color("7cf0a8")
+const DEBUG_ATTACK_AREA_COLOR := Color("f0c05a")
+const DEBUG_REACHED_COLOR := Color("ffd9d9")
+## Texto del HUD de depuración, en la fuente de píxeles del proyecto.
+const DEBUG_TEXT_COLOR := Color(0.7, 0.9, 0.8, 1.0)
 
 # --- Inventario (UI, seccion 13) ---
 ## Rejilla de la mochila. Las casillas son cuadradas; el numero de filas sale de la

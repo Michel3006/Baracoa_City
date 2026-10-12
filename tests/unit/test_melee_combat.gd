@@ -104,6 +104,9 @@ func register() -> Array:
 		["el golpe empuja y el empuje se apaga solo", _knockback_pushes_and_decays],
 		["un golpe a mitad de ataque corta el ataque", _a_hit_interrupts_the_attack],
 		["golpear prefiere la entrada rica del objetivo", _strike_prefers_rich_targets],
+		["el golpe que entra emite el impacto con su tier", _strike_announces_the_impact],
+		["recibir daño emite el impacto deducido del daño", _receiving_damage_announces_impact],
+		["un golpe bloqueado o a un invulnerable no emite impacto", _silent_hits_emit_nothing],
 	]
 
 
@@ -990,3 +993,54 @@ func _strike_prefers_rich_targets(ctx: ScriptTestContext) -> void:
 	ctx.check_equal(
 		plain.health.current, 30.0 - (GameConfig.WEAPON_STONE_DAMAGE - 2.0), "por `take_damage`"
 	)
+
+
+## La señal de impacto es lo que congela el mundo en la presentación (secciones
+## 36-38), y tiene que salir por los dos lados del golpe: el atacante la emite al
+## conectar, con el tier de su ataque.
+func _strike_announces_the_impact(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var tiers: Array[StringName] = []
+	combat.impact_struck.connect(func(tier: StringName) -> void: tiers.append(tier))
+
+	ctx.check(combat.try_attack(Vector2.RIGHT), "el golpe sale")
+	_open_window(combat)
+	ctx.check_equal(combat.strike([RichDummy.new()]), 1, "y entra")
+
+	ctx.check_equal(
+		tiers,
+		[AttackCatalog.of(AttackCatalog.LEFT_JAB).knockback],
+		"con el tier del ataque, sin deducir"
+	)
+
+
+## El defensor también avisa, con el tier deducido del daño cuando el atacante no
+## trae un ataque: así un golpe que llega sin catálogo sigue teniendo impacto.
+func _receiving_damage_announces_impact(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	var tiers: Array[StringName] = []
+	combat.impact_struck.connect(func(tier: StringName) -> void: tiers.append(tier))
+
+	combat.receive_damage(10.0)
+
+	ctx.check_equal(tiers, [CombatReaction.TIER_MEDIUM], "deducido del daño (10 -> medium)")
+
+
+## Bloqueado, esquivado o invulnerable no se emite: el golpe no entró y no hay
+## nada que congelar ni que celebrar. La señal se cuenta, no solo se comprueba su
+## valor, porque un falso aviso se notaría en que el mundo tiembla sin golpe.
+func _silent_hits_emit_nothing(ctx: ScriptTestContext) -> void:
+	var combat := _combat()
+	combat.player.direction = Vector2.DOWN
+	var tiers: Array[StringName] = []
+	combat.impact_struck.connect(func(tier: StringName) -> void: tiers.append(tier))
+
+	combat.set_blocking(true)
+	combat.take_attack(AttackCatalog.of(AttackCatalog.LEFT_JAB), 6.0, Vector2.UP)
+	ctx.check_equal(tiers, [], "un golpe bloqueado no avisa")
+
+	combat.set_blocking(false)
+	ctx.check_equal(combat.receive_damage(5.0), 5.0, "el primer golpe entra")
+	ctx.check_equal(tiers.size(), 1, "y avisa una vez")
+	ctx.check_equal(combat.receive_damage(5.0), 0.0, "el segundo cae en la invulnerabilidad")
+	ctx.check_equal(tiers.size(), 1, "y no vuelve a avisar")

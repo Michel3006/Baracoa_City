@@ -42,6 +42,14 @@ var _is_down: bool = false
 ## entero sesenta veces por segundo cuando el valor no ha cambiado.
 var _attack_width: int = -1
 
+## HUD de depuración del combate (sección 34). Arranca como manda `GameConfig`
+## y se conmuta en caliente con F1: cuando está encendido, el HUD enseña además
+## lo que el combate está haciendo, que es lo que se calibra jugando.
+var _debug_enabled: bool = GameConfig.SHOW_HUD_DEBUG
+## Vista del jugador, para leer animación y dirección sin adivinar nodos. La
+## inyecta `MainWorldView` al conectar los casos de uso.
+var _debug_view: PlayerView = null
+
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -58,11 +66,15 @@ func _process(_delta: float) -> void:
 		return
 	var ready := 1.0 - session.combat.cooldown_ratio
 	var width := _fill_width(GameConfig.HUD_BAR_SIZE, ready)
-	if width == _attack_width:
-		return
-	_attack_width = width
-	_attack_ready = ready
-	queue_redraw()
+	if width != _attack_width:
+		_attack_width = width
+		_attack_ready = ready
+		queue_redraw()
+	elif _debug_enabled:
+		# El HUD de depuración es un reloj vivo (estado, combo, animación): se
+		# redibuja cada fotograma mientras está encendido, aunque las barras no
+		# hayan cambiado.
+		queue_redraw()
 
 
 ## Grado de preparación del golpe, de 0 (recién golpeado) a 1 (listo). Es el valor
@@ -101,6 +113,64 @@ func set_down(down: bool) -> void:
 	queue_redraw()
 
 
+## Conmuta el HUD de depuración (sección 34). Lo llama el mundo desde su tecla;
+## apagarlo debe ser tan fácil como encenderlo.
+func set_debug_enabled(value: bool) -> void:
+	if _debug_enabled == value:
+		return
+	_debug_enabled = value
+	queue_redraw()
+
+
+func is_debug_enabled() -> bool:
+	return _debug_enabled
+
+
+## Conecta la vista del jugador para leer animación y dirección. Sin ella el HUD
+## de depuración no puede enseñar esas dos líneas.
+func bind_debug(view: PlayerView) -> void:
+	_debug_view = view
+
+
+## Líneas del HUD de depuración. Devuelve lo que se dibuja, para poder
+## comprobarlo sin contar píxeles de una captura: cada línea es el texto real de
+## la fuente, y si la línea no está, el dibujo tampoco va a estar.
+func debug_lines() -> Array[String]:
+	if session == null or session.combat == null:
+		return []
+	var lines: Array[String] = []
+	var player: Player = session.player
+	lines.append("HP: %d/%d" % [ceili(player.health.current), ceili(player.health.maximum)])
+	lines.append("STA: %d/%d" % [ceili(player.stamina), ceili(player.stats.max_stamina)])
+	lines.append("STATE: %s" % PlayerState.name_of(player.state))
+	var attack: AttackDefinition = session.combat.current_attack
+	lines.append(
+		"ATTACK: %s"
+		% (str(attack.id).to_upper().replace("_", " ") if attack != null else "NONE")
+	)
+	lines.append(
+		"ANIM: %s"
+		% (_debug_view.current_animation().to_upper() if _debug_view != null else "?")
+	)
+	lines.append("DIR: %s" % _direction_name(_debug_view.facing() if _debug_view != null else Vector2.ZERO))
+	lines.append("HITBOX: %s" % ("ON" if session.combat.is_window_open else "OFF"))
+	lines.append("COMBO: %d" % session.combat.combo_index)
+	return lines
+
+
+## Nombre corto de una dirección de la mira, para la línea DIR del debug.
+static func _direction_name(facing: Vector2) -> String:
+	if facing.is_zero_approx():
+		return "?"
+	if facing.y < 0.0:
+		return "UP"
+	if facing.y > 0.0:
+		return "DOWN"
+	if facing.x < 0.0:
+		return "LEFT"
+	return "RIGHT"
+
+
 func _show_weapon(weapon: Weapon) -> void:
 	_is_unarmed = weapon == null or WeaponCatalog.is_unarmed(weapon)
 	_weapon_icon = null
@@ -114,6 +184,8 @@ func _draw() -> void:
 	if _is_down:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.35, 0.0, 0.0, GameConfig.HUD_DOWN_TINT))
 		_draw_death_text()
+	if _debug_enabled:
+		_draw_debug()
 	var margin := GameConfig.HUD_BAR_MARGIN
 	var bar := GameConfig.HUD_BAR_SIZE
 
@@ -162,6 +234,25 @@ func _draw_death_text() -> void:
 		hint,
 		Color(0.85, 0.6, 0.6, 0.85)
 	)
+
+
+## HUD de depuración del combate (sección 34): una columna a la derecha de las
+## barras, sin pisarlas ni pisar el icono del arma. Las líneas salen de
+## `debug_lines()`, que es lo que comprueban los tests: esto solo las pinta.
+func _draw_debug() -> void:
+	var origin := Vector2i(
+		GameConfig.HUD_BAR_MARGIN.x + GameConfig.HUD_BAR_SIZE.x + GameConfig.HUD_BAR_GAP
+			+ GameConfig.HUD_WEAPON_SIZE.x + 6,
+		6
+	)
+	var lines := debug_lines()
+	for index: int in lines.size():
+		PixelFont.draw(
+			self,
+			origin + Vector2i(0, index * 8),
+			lines[index],
+			GameConfig.DEBUG_TEXT_COLOR
+		)
 
 
 ## Barra con fondo y relleno. El relleno se dibuja con anchos enteros para que a

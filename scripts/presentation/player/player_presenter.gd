@@ -53,6 +53,13 @@ var _struck_unarmed: bool = false
 ## mundo, y una presentación que necesita un nodo para poder probarse está mal.
 var _fx_parent: Node2D = null
 
+## Hit stop (sección 36): mientras dura, este presentador no mueve el reloj del
+## combate ni el cuerpo. Lo pone la señal `impact_struck` del propio combate,
+## que se emite tanto al dar como al recibir un golpe que entra, y se agota en
+## el `_physics_process` sin dejar que nada avance. No se congela el dominio:
+## los unitarios siguen moviendo el reloj a mano.
+var _hit_stop_remaining: float = 0.0
+
 
 func setup(view: PlayerView, movement: MovementController, combat: MeleeCombat = null) -> void:
 	_view = view
@@ -78,6 +85,7 @@ func setup(view: PlayerView, movement: MovementController, combat: MeleeCombat =
 		_combat.dodge_started.connect(_on_dodge_started)
 		_combat.dodge_finished.connect(_on_dodge_finished)
 		_combat.block_changed.connect(_on_block_changed)
+		_combat.impact_struck.connect(_on_impact_struck)
 		# Los enemigos golpean a este nodo a través de la capa PLAYER, así que
 		# necesita saber a quién avisa. El objetivo es el cuerpo de combate y no el
 		# `Player` del dominio: así el daño respeta la invulnerabilidad.
@@ -94,6 +102,13 @@ func set_fx_parent(node: Node2D) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Hit stop (sección 36): el golpe que acaba de entrar o de salir congela un
+	# instante el reloj del combate y el cuerpo. No se llama a `advance()` mientras
+	# dura, que es lo que de verdad congela el tiempo de combate; la vista sigue en
+	# su pose porque el clip apenas avanza en 35-70 ms.
+	if _hit_stop_remaining > 0.0:
+		_hit_stop_remaining = maxf(0.0, _hit_stop_remaining - delta)
+		return
 	if _movement != null:
 		# El empuje (knockback o rodada) lo escribe el combate en su `advance()` y
 		# se copia al movimiento antes de mover: en el fotograma en que llega el
@@ -191,7 +206,39 @@ func _strike_visible_targets() -> void:
 		if target == null or target in _struck:
 			continue
 		_struck.append(target)
-		_combat.strike([target], _struck_unarmed)
+		var hits := _combat.strike([target], _struck_unarmed)
+		# El burst de impacto sale en el punto del cuerpo golpeado; aquí es el
+		# único sitio donde el presentador sabe dónde cayó el golpe. Solo si el
+		# golpe entró: fallar no celebra nada.
+		if hits > 0:
+			_spawn_impact(body.global_position)
+
+
+## Burst de partículas en el punto donde conectó el golpe (sección 38). El tier
+## es el del ataque en curso: el mismo que decide el hit stop y la sacudida.
+func _spawn_impact(point: Vector2) -> void:
+	if _fx_parent == null or _view == null or _combat == null:
+		return
+	var attack := _combat.current_attack
+	var tier: StringName = attack.knockback if attack != null else CombatReaction.TIER_LOW
+	ImpactEffect.spawn(_fx_parent, point, _view.facing(), tier)
+
+
+## ¿Está el mundo congelado por un impacto? Lo consultan los tests.
+func is_hit_stopped() -> bool:
+	return _hit_stop_remaining > 0.0
+
+
+## Cuánto le queda al hit stop.
+func hit_stop_remaining() -> float:
+	return _hit_stop_remaining
+
+
+## Un golpe ha entrado (por el lado que sea): se congela el presentador los
+## milisegundos que manda el tier. La fusión con `max` evita que dos impactos en
+## el mismo fotograma sumen su congelación.
+func _on_impact_struck(tier: StringName) -> void:
+	_hit_stop_remaining = maxf(_hit_stop_remaining, CombatImpact.hit_stop_of(tier))
 
 
 func _domain_target_of(body: Node) -> Object:
