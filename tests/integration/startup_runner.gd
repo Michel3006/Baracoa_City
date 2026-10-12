@@ -65,6 +65,7 @@ func _run() -> void:
 	await _check("la geometría de debug sigue a la hitbox y conmuta con F2", _debug_hitboxes_geometry_and_toggle)
 	await _check("el muñeco de combate está en el mundo y no se mueve ni pega", _dummy_exists_and_is_passive)
 	await _check("un golpe real del jugador entra al muñeco y reacciona", _dummy_takes_a_hit_and_reacts)
+	await _check("un golpe fuerte al muñeco congela su presentador y se descongela solo", _dummy_presenter_hit_stops)
 	await _check("el muñeco muere y reaparece a los dos segundos", _dummy_dies_and_respawns)
 
 	_report()
@@ -1552,6 +1553,38 @@ func _dummy_takes_a_hit_and_reacts() -> void:
 		_game().session.player.health.maximum,
 		"y el jugador no recibe nada a cambio"
 	)
+
+
+## El hit stop no es solo del jugador: la F6 lo enchufó a las dos puntas del
+## golpe, pero solo la del jugador tenía pruebas. Aquí se congela el presentador
+## del muñeco con un golpe controlado de tier alto (25 de daño, reloj de 0.07 s)
+## y se comprueba que el reloj lo suelta solo.
+func _dummy_presenter_hit_stops() -> void:
+	var spawner: CombatDummySpawner = _world().dummy_spawner
+	if not _context.check(spawner != null, "el mundo no tiene muñeco de combate"):
+		return
+	var combat := spawner.combat()
+	combat.advance(GameConfig.NPC_INVULNERABILITY_TIME + 1.0)
+	var dealt := combat.take_attack(
+		AttackCatalog.of(AttackCatalog.LEFT_HOOK), 25.0, Vector2.UP
+	)
+	_context.check(dealt > 0.0, "el golpe entra")
+	_context.check(
+		spawner.presenter().is_hit_stopped(),
+		"y congela al presentador del muñeco"
+	)
+	var waited := 0
+	while spawner.presenter().is_hit_stopped() and waited < 120:
+		await physics_frame
+		waited += 1
+	_context.check(
+		not spawner.presenter().is_hit_stopped(),
+		"y se descongela solo al agotarse el reloj"
+	)
+	# El golpe dejó al muñeco herido y aturdido: drenar para que el caso de la
+	# muerte siguiente empiece con un golpe limpio.
+	combat.advance(GameConfig.NPC_INVULNERABILITY_TIME + 1.0)
+	await _settle(2)
 
 
 ## La muerte del muñeco se ve (queda en la pose de muerte, apagado) y a los dos
