@@ -489,6 +489,18 @@ NO rellenar `?` inventando datos.
 
 Determinar los valores mediante inspección y prueba.
 
+### ESTADO AL CIERRE (F1–F9)
+
+La tabla se rellenó midiendo la hoja del pack y se dejó donde vive cada ataque:
+`AttackCatalog._DATA` lleva por ataque `clip_frames` (fotogramas totales del
+clip) y `contact_frame` (fotograma de contacto), todos a **68 fps**, el ritmo al
+que se horneó el pack (`HormelzVisualData`: combate a 68, caminar a 50, reposo
+estático). Ningún `?` se inventó: los fotogramas salieron de contar la celda en
+la hoja horneada y de casarla con el `Preview.gif` del pack (ver
+`docs/assets/TEXTURAS.md` §2.1). `FRONT_KICK_2` y `COMBO` no existen en la tabla
+de la sección 29 y recibieron el daño y la stamina de su familia como decisión
+de calibración explícita (detalle en la sección 65).
+
 ------------------------------------------------------------------------
 
 # 13. INPUT
@@ -511,6 +523,39 @@ Space = block, si se implementa
 ```
 
 Los controles finales pueden adaptarse a los existentes.
+
+### ESTADO AL CIERRE (F1–F9)
+
+La propuesta se convirtió en el mapa real sin romper los controles que ya había:
+
+``` text
+WASD / Flechas     = movimiento (mantener)
+J / Clic izquierdo = ataque de arma (cadena ligera)
+F / Clic derecho   = ataque a puños desarmado
+K                  = ataque pesado (cadena pesada)
+L                  = patada (cadena de patadas)
+Shift              = esquive (hacia donde caminas; sin dirección, hacia donde miras)
+Space              = guardia (mantener)
+E                  = interactuar / confirmar en la mochila / revivir (CAIDO)
+Tab                = abrir y cerrar la mochila
+F1                 = HUD de depuración (alternar)
+F2                 = hitboxes de depuración (alternar)
+Esc                = salir del juego (ui_cancel)
+```
+
+La guardia (Space) se implementó, así que el "si se implementa" de la
+propuesta quedó cumplido. Dos anotaciones sobre el mapa:
+
+- `Esc` es `ui_cancel` (el bind por defecto de Godot, que no aparece en
+  `project.godot`): sale del juego desde el autoload. `Tab` abre y cierra la
+  mochila. Conviven sin pisarse, y la prueba de integración que sintetiza la
+  pulsación **física** de `Tab` (no la acción) lo verifica en cada pasada.
+- Al leer teclas de un `project.godot` hay que mirar el valor del enum de Godot
+  y no suponerlo: `4194306` es `KEY_TAB` (escap es `4194305` y backspace
+  `4194308`). Equivocarse ahí convence de que el mapa está roto cuando no lo
+  está, y de hecho rompe la prueba al cambiar el bind. La regla de AGENTS.md
+  aplicada al revés: probar la entrada con la tecla real es lo que deshace una
+  mala lectura del mapa.
 
 ------------------------------------------------------------------------
 
@@ -1030,6 +1075,28 @@ Si no existe:
 
 La ausencia de una animación no debe romper el CombatSystem.
 
+### ESTADO AL CIERRE (F1–F9)
+
+Se inspeccionó el pack: **no trae guardia**. La guardia se quedó con la lógica
+completa y sin clip, que es exactamente lo que pedía la sección:
+
+- `set_blocking(held)` pide la guardia cada fotograma mientras se mantiene
+  `Space`. Sube solo si el cuerpo puede (`CombatState.BLOCKING`), y atacar la
+  baja en el mismo golpe.
+- Golpe de frente con guardia arriba y stamina: el daño queda en `0.0`, se
+  gastan `BLOCK_STAMINA_COST` (8) y el defensor empuja un poco hacia atrás. La
+  señal `attack_received(BLOCKED, ...)` avisa de la lectura correcta y
+  `damaged` **no** se emite.
+- Sin stamina para aguantar: la guardia **se rompe** (`BLOCK_BREAK_TIME`, 0.6 s
+  de aturdimiento) y entra el golpe entero. La guardia es una decisión de gasto,
+  no un muro permanente.
+- En guardia se camina a `BLOCK_MOVE_MULT` (0.4): parar del todo la defensa la
+  haría inútil contra el que persigue, y la velocidad completa la haría gratis.
+
+La ausencia del clip no rompe nada: el cuerpo se queda en la pose que tuviera
+mientras la guardia reduce daño. Si el asset llega más adelante, se añade como
+un clip más del catálogo visual sin tocar el caso de uso.
+
 ------------------------------------------------------------------------
 
 # 32. MUERTE
@@ -1087,6 +1154,36 @@ Opcional:
 ``` text
 respawn = 2 s
 ```
+
+### ESTADO AL CIERRE (F1–F9)
+
+Implementado como `CombatDummy`, un `Npc` pasivo con identidad propia
+(`Kind "dummy"`), fuera de la tabla de aparición y de `NpcKind`: lo gestiona
+`CombatDummySpawner` como elemento del mundo, no el director de enemigos (así
+apagar `NPC_ENABLED` no se lleva la zona el objetivo de pruebas).
+
+- Health, Hurtbox, Visual: los da `Npc` + `NpcView` con la definición Hormelz
+  de los enemigos reutilizada y un tinte de paleta propio (`DUMMY_TINT`, gris
+  piedra, fuera de los tintes de estado).
+- Hit Reaction, Stagger, Knockback, Death: los da `NpcCombat` reutilizado: el
+  muñeco no tiene ni una línea de combate propia, responde igual que un enemigo,
+  con su clip de reacción y su muerte yacente.
+- Pasividad: `NpcBehavior.dummy()` con todo en cero (daño, alcance, velocidad,
+  agresión, correa, paseo): el cerebro nunca ataca, persigue ni camina aunque le
+  repartan objetivo, y tampoco se mueve solo (la respuesta al golpe la dan los
+  sistemas, no la IA).
+- Reaparición: **sí**, `DUMMY_RESPAWN_TIME = 2 s` (la opcional de la sección),
+  contada por el generador en `_physics_process` (sin `Timer`, determinista en
+  tests). Al volver se drena primero el combate (aturdimiento, invulnerabilidad,
+  reacción, empuje) para no reaparecer teñido ni derrapando.
+- Puesto: `DUMMY_SPAWN` (200, 224), 24 px al sur del jugador: andar un poco y un
+  golpe hacia abajo lo alcanzan, y queda fuera de los nidos de enemigos.
+
+Bug real que salió al probarlo (y que las suites no veían): `NpcCombat.died`
+estaba declarada sin emisor, y la reaparición —que depende de esa señal— jamás
+arrancaba. Ahora `_receive_computed` la emite al matar, lockeado con test
+unitario. Mismo género que los fallos que documenta AGENTS.md: una señal que
+nadie emite no la ve ningún test que no la escuche.
 
 ------------------------------------------------------------------------
 
@@ -1164,6 +1261,24 @@ Calibrar.
 No congelar permanentemente sistemas de red/servidor cuando exista
 multiplayer.
 
+### ESTADO AL CIERRE (F1–F9)
+
+Implementado en la **presentación**, no en el dominio:
+
+- Cada presentador (jugador y NPC) lleva `_hit_stop_remaining`. La señal
+  `impact_struck` del cuerpo de combate —al dar y al recibir un golpe que
+  entra— lo activa con `CombatImpact.hit_stop_of(tier)`.
+- Mientras dura, el `_physics_process` del presentador retorna antes del
+  `advance()`: el reloj del combate se congela junto con el cuerpo, que es lo
+  que da el golpe seco. El clip apenas avanza en 35-70 ms.
+- El dominio no se congela: las máquinas de estado (`PlayerState`, `NpcState`)
+  no tienen reloj, y los tests unitarios mueven los relojes de combate a mano.
+- En Fase 2 el hit stop es cosmético y por fotograma del cliente: el servidor
+  autoritativo jamás se congela (cumple la advertencia de la sección), el
+  cliente solo pausa su presentación.
+- Valores: light 0.035 s, medium 0.05 s, heavy 0.07 s
+  (`HIT_STOP_LIGHT/MEDIUM/HEAVY`), dentro del rango propuesto (30-80 ms).
+
 ------------------------------------------------------------------------
 
 # 37. CAMERA SHAKE
@@ -1181,6 +1296,18 @@ HEAVY  → mayor
 No exagerar.
 
 Debe conservarse la jugabilidad.
+
+### ESTADO AL CIERRE (F1–F9)
+
+La sacudida se **deriva del tier del impacto**, igual que el hit stop y que las
+partículas: un solo mapa (`CombatImpact`) traduce *tier → hit stop, sacudida y
+partículas*, para no tener que calibrar tres números por ataque. La señal única
+es `impact_struck`, que emite el cuerpo de combate al dar (con el tier del
+ataque) y al recibir (con el tier deducido del daño); `CameraShake` la recoge y
+aplica `CombatImpact.shake_of(tier)` —amplitud escala con el tier, light >
+medium > heavy— y decae sola. Nada de sacudida fuera del impacto: la prueba de
+integración da un golpe, espera el temblor y comprueba que la cámara vuelve a
+quedarse quieta.
 
 ------------------------------------------------------------------------
 
@@ -1210,6 +1337,16 @@ HEAVY
 Mantener pixel-art.
 
 No utilizar efectos pesados.
+
+### ESTADO AL CIERRE (F1–F9)
+
+Los dos efectos del impacto usan el mismo derivado que el hit stop y la
+sacudida: `CombatImpact.particle_count_of(tier)` decide cuántas partículas de
+píxel suelta el burst (`ImpactEffect`) al golpe que entra, y el arco del golpe
+(`SlashEffect`) sale del torso del actor hacia donde mira con su propia hoja
+medida del pack (rejilla casada con el `Preview.gif`, ver TEXTURAS.md §2.1).
+Todo escala con el tier y dura 1-2 fotogramas; nada de efectos pesados, y las
+partículas son rectángulos de 1x1 dibujados con `draw_rect` (pixel-art puro).
 
 ------------------------------------------------------------------------
 
@@ -1268,6 +1405,23 @@ REACCIÓN
 RECUPERAR
 ```
 
+### ESTADO AL CIERRE (F1–F9)
+
+La cadena sale de piezas separadas que se encajan por señales, no de una
+animación por golpe:
+
+- PREPARAR lo dan los fotogramas iniciales del propio clip del pack (el arranque
+  del puño o la patada), a 68 fps.
+- GOLPEAR es la ventana de golpe: el `contact_frame` del ataque abre la hitbox.
+- CONTACTO + REACCIÓN: `impact_struck` dispara hit stop, sacudida y partículas;
+  el que recibe levanta el trance (`CombatReaction`) con su clip y su empuje.
+- RECUPERAR es la fase de recuperación del ataque, y el cuerpo vuelve a su
+  reposo.
+
+Cada pieza se calibró por separado, con los frames medidos del pack (sección 12)
+y no inventados: el realismo viene de ensamblar piezas medidas, no de una tabla
+de valores de fantasía.
+
 ------------------------------------------------------------------------
 
 # 41. EFECTO DE PESO
@@ -1295,6 +1449,17 @@ Audio
 ```
 
 No intentar producir sensación de fuerza simplemente aumentando daño.
+
+### ESTADO AL CIERRE (F1–F9)
+
+La sensación de peso sale del conjunto —animación (frames del pack), timing
+(contact_frame + ventanas), hitbox (geometría de la sección 16), trance,
+knockback, hit stop, sacudida y partículas— y **el daño no participa**: es un
+número de `DamageRules` que se percibe por la vida y el trance que levanta, no
+por la animación. Un golpe de 6 y uno de 16 se ven igual de contundentes cuando
+comparten tier; lo que cambia es la vida y el tier deducido. No se aumentó el
+daño de nadie para "que se sienta fuerte": el peso es un problema de presentación
+y se resolvió en la presentación.
 
 ------------------------------------------------------------------------
 
