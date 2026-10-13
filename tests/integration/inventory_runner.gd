@@ -5,10 +5,9 @@ extends SceneTree
 ## Uso: godot --headless --script res://tests/integration/inventory_runner.gd
 ##
 ## Monta lo que monta el juego (autoload `Game` + escena principal, igual que
-## F5) y comprueba la cadena real: inventario -> sesión -> combate -> sprite de la
-## mano. Sin la escena principal este runner vería el autoload, que es lo mismo
-## que veían las otras suites, y la pregunta aquí es justo la de pantalla: lo que
-## se equipa tiene que acabar dibujándose en la mano.
+## F5) y comprueba la cadena real: inventario -> sesión -> combate. La mano ya
+## no dibuja nada (el stick del pack se quitó de la vista), así que equipar se
+## mide por el arma del combate y por el inventario, no por un sprite.
 
 var _context: ScriptTestContext
 var _total: int = 0
@@ -29,8 +28,8 @@ func _run() -> void:
 		await physics_frame
 
 	await _check("el jugador arranca con la piedra en la mochila y en la mano", _starting_inventory)
-	await _check("equipar desde el inventario cambia el arma en mano y en pantalla", _equip_changes_weapon)
-	await _check("des-equipar deja las manos vacías y a puños", _unequip_sends_unarmed)
+	await _check("equipar desde el inventario cambia el arma del combate", _equip_changes_weapon)
+	await _check("des-equipar deja a puños", _unequip_sends_unarmed)
 	await _check("usar un consumible lo consume de la sesión", _use_consumes_from_session)
 	await _check("equipar lo que no existe se rechaza y no toca el arma", _equip_missing_fails)
 	await _check("la mochila se abre, pausa el mundo y se cierra", _panel_opens_pauses_and_closes)
@@ -86,13 +85,6 @@ func _session() -> GameSession:
 	return game.session
 
 
-func _view() -> PlayerView:
-	var game := _game()
-	if game == null or game.world_view == null:
-		return null
-	return game.world_view.player
-
-
 # --- casos ---
 
 func _starting_inventory() -> void:
@@ -114,7 +106,6 @@ func _starting_inventory() -> void:
 
 func _equip_changes_weapon() -> void:
 	var session := _session()
-	var view := _view()
 	if session == null:
 		_context.check(false, "sin sesión")
 		return
@@ -132,23 +123,10 @@ func _equip_changes_weapon() -> void:
 		session.player.equipped_item, ItemCatalog.KNIFE,
 		"el inventario dice que va el cuchillo"
 	)
-	if view == null:
-		_context.check(false, "sin vista del jugador")
-		return
-	_context.check(view.is_armed, "se dibuja un arma en la mano")
-	var sprite := view.get_node_or_null("Weapon") as Sprite2D
-	if sprite == null or sprite.texture == null:
-		_context.check(false, "no hay sprite de arma en la mano")
-		return
-	_context.check(
-		sprite.texture.resource_path.ends_with("blade.png"),
-		"el sprite de la mano es la hoja del cuchillo (%s)" % sprite.texture.resource_path
-	)
 
 
 func _unequip_sends_unarmed() -> void:
 	var session := _session()
-	var view := _view()
 	if session == null:
 		_context.check(false, "sin sesión")
 		return
@@ -162,8 +140,6 @@ func _unequip_sends_unarmed() -> void:
 	_context.check_equal(
 		session.player.equipped_item, &"", "el inventario dice que va a puños"
 	)
-	if view != null:
-		_context.check(not view.is_armed, "no se dibuja nada en la mano")
 
 
 func _use_consumes_from_session() -> void:

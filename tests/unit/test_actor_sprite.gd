@@ -107,7 +107,6 @@ func register() -> Array:
 		["el arco dura lo que dura el golpe", _fx_duration],
 		["el arco se ancla en el torso y sale por delante", _fx_origin],
 		["ninguna hoja se lee fuera de la rejilla", _frames_stay_in_grid],
-		["la mano cae sobre el cuerpo en las cuatro direcciones", _hand_on_body],
 	]
 
 
@@ -931,60 +930,6 @@ func _fx_span(points: Array[Vector2i], axis: Vector2i) -> Vector2i:
 		low = mini(low, value)
 		high = maxi(high, value)
 	return Vector2i(low, high)
-
-
-## El arma tiene que caer sobre el cuerpo, no en el suelo ni por encima de la cabeza.
-##
-## El origen del cuerpo esta en los pies y el actor se dibuja hacia arriba. Sin
-## altura de mano, mirando hacia abajo el arma quedaba 3 px por debajo de los pies y
-## mirando hacia azul 3 px por encima de la cabeza: en las dos orientaciones verticales
-## no parecía un arma en la mano sino un objeto suelto.
-func _hand_on_body(ctx: ScriptTestContext) -> void:
-	# Se llama al método de la vista de verdad, no a una copia de su fórmula: si el
-	# cálculo se moviera, esta prueba tiene que enterarse. No hace falta montar la
-	# escena porque `hand_position()` es aritmética pura y `_ready()` no se ejecuta
-	# fuera del árbol.
-	var view := PlayerView.new()
-	# El centro del cuerpo. Todo lo que se comprueba es geométrico, en coordenadas de
-	# pantalla, para no repetir la fórmula que se está probando.
-	var chest := Vector2(0.0, -float(GameConfig.ACTOR_FRAME_SIZE) * 0.5)
-	for direction: Vector2 in [Vector2.DOWN, Vector2.UP, Vector2.LEFT, Vector2.RIGHT]:
-		var hand: Vector2 = view.hand_position(direction)
-		var offset := hand - chest
-		ctx.check(
-			hand.y < 0.0,
-			"la mano mirando a %s está a la altura de los pies o más abajo (%.1f)" % [
-				direction, hand.y
-			]
-		)
-		ctx.check(
-			hand.y > -float(GameConfig.ACTOR_FRAME_SIZE),
-			"la mano mirando a %s está por encima de la cabeza (%.1f)" % [direction, hand.y]
-		)
-		ctx.check(
-			absi(hand.x) <= float(GameConfig.ACTOR_FRAME_SIZE) * 0.5,
-			"la mano mirando a %s no se sale del ancho del cuerpo (%.1f)" % [
-				direction, hand.x
-			]
-		)
-		# La mano se adelanta hacia donde mira, medido en pantalla: hacia abajo es
-		# hacia abajo, no hacia el fondo de la pantalla. En una vista cenital, mirar
-		# hacia abajo pone la mano por debajo del centro del cuerpo.
-		if not is_zero_approx(direction.y):
-			ctx.check(
-				signf(offset.y) == signf(direction.y),
-				"la mano mirando a %s no se adelanta en vertical (desplaza %.1f)" % [
-					direction, offset.y
-				]
-			)
-		if not is_zero_approx(direction.x):
-			ctx.check(
-				signf(offset.x) == signf(direction.x),
-				"la mano mirando a %s no se adelanta en horizontal (desplaza %.1f)" % [
-					direction, offset.x
-				]
-			)
-	view.free()
 
 
 ## Un `PlayerView` sin montar libera el cuerpo y la colisión que construye en su

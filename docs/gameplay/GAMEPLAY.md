@@ -59,30 +59,15 @@ presentador cuando `MeleeCombat` avisa de un aturdimiento, así que el jugador n
 puede moverse mientras está HURT. El aturdimiento se lee en pantalla con el tinte
 violeta propio (`STUN_TINT`), distinto del rojo de la invulnerabilidad — ver §8bis.
 
-### El arma en la mano
+### El arma (sin dibujo en la mano)
 
-El arma equipada es un sprite hijo del jugador que va **al costado del cuerpo**,
-nunca en su eje: la mano está a `HAND_REACH` a un lado y a la altura del pecho, y
-hacia arriba o abajo solo se adelanta un poco (`HAND_VERTICAL_REACH`). El sprite se
-ancla por el mango, así que el nodo es la mano y el arco del golpe gira alrededor de
-ella en vez de despegar el arma de la mano a mitad de swing.
-
-Para que el nodo sea de verdad el mango el sprite va con `centered = false`. Con
-`centered = true` el rectángulo que se dibuja es `posicion + offset - tamaño / 2`, así
-que un `offset.y = -altura` pensado para anclar por el mango deja el borde inferior del
-arma **media altura por encima de la mano** y el palo se ve flotando por encima de la
-cabeza en las cuatro orientaciones. La comprobación es sobre el rectángulo dibujado y
-no sobre la posición del nodo: el nodo estaba bien colocado y lo que flotaba era el
-dibujo.
-
-Fuera del golpe el arma descansa recta, con una inclinación pequeña hacia donde mira
-el jugador (`HAND_TILT`), y el arco (`HAND_SWING`) solo suma mientras dura el swing.
-Se coloca en **todos** los fotogramas, no solo al parar: si se coloca solo en un
-estado, mientras se camina se queda donde se dejó la última vez, y al parar salta de
-golpe a la posición y a la inclinación nuevas.
-
-Las dos cosas son medidas, no supuestas: el arma del pack es un palo de 3x16 px, y
-centrado en el eje del cuerpo tapaba las piernas al caminar hacia abajo.
+El jugador lleva un arma equipada —la piedra al arrancar— que decide el daño, el
+alcance y el cooldown del golpe. Desde la limpieza del stick, **no se dibuja nada
+en la mano**: el sprite del arma del pack (un palo de 3x16 px) no encaja sobre el
+cuerpo del boxeador Hormelz y al atacar quedaba flotando fuera de la mano,
+rompiendo la lectura de las animaciones de puño, pesado y patada. El arma sigue
+existiendo para pegar (daño, alcance, desgaste); lo único que desapareció es su
+dibujo. El icono del arma del HUD sigue enseñando la textura equipada.
 
 ## 3. Cámara
 
@@ -391,8 +376,9 @@ cuchillo y una baya de ejemplo; las armas llevan en `metadata.weapon` el id del
 
 El cableado inventario -> arma vive en `GameSession`: `equipped_changed` se
 traduce a `MeleeCombat.equip()` (que no se tocó: era el gancho) y la señal
-`weapon_changed` del combate cambia el sprite de la mano. El jugador arranca con
-la piedra equipada por esta vía. El jugador lo lleva al revés:
+`weapon_changed` del combate avisa a la vista para que actualice el alcance de la
+hitbox (en la mano ya no se dibuja nada: el stick se quitó de la vista). El
+jugador arranca con la piedra equipada por esta vía. El jugador lo lleva al revés:
 `player.equipped_item` se lee del inventario, no al contrario.
 
 ## 8sexies. La mochila (la pantalla)

@@ -190,7 +190,9 @@ guarda pilas de `Item` con su cantidad, una casilla por objeto distinto
 propio inventario (`equipped()`), y `Player.equipped_item` se lee de ahí. Cuando
 `equipped_changed` emite, `GameSession` traduce el id al arma (`item.metadata.weapon`
 -> `WeaponCatalog.create`) y llama al `MeleeCombat.equip()` que ya existía; la
-señal `weapon_changed` del combate hace que la vista cambie el sprite de la mano.
+señal `weapon_changed` del combate avisa a la vista para que actualice el alcance
+de la hitbox. Desde la limpieza del stick no hay sprite de arma en la mano: el
+arma existe para pegar, no para dibujarse — el icono del HUD es aparte.
 El jugador arranca con la piedra equipada, la misma piedra con la que el combate
 ya empezaba antes de que existiera el inventario.
 

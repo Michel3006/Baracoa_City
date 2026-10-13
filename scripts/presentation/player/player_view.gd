@@ -12,7 +12,7 @@ extends CharacterBody2D
 ## aturdido.
 ##
 ## El origen del nodo está en los pies del personaje. Todo lo que se dibuja encima
-## (sprite, arma, efecto de golpe) se coloca respecto a ese punto.
+## (sprite, efecto de golpe, brazo a puños) se coloca respecto a ese punto.
 ##
 ## Dependencias: presentation -> application
 
@@ -20,32 +20,6 @@ signal move_performed(moved: Vector2)
 signal facing_changed(facing: Vector2)
 
 const BODY_RADIUS := 5.0
-
-## Distancia lateral a la que se dibuja el arma: al costado del cuerpo y nunca en su
-## eje. En una vista cenital el brazo que lleva el arma se ve al lado del personaje, y
-## ponerlo por delante (arriba o abajo) lo cruzaba encima de las piernas.
-const HAND_REACH := 5.0
-
-## Cuánto se adelanta la mano hacia arriba o hacia abajo. Menor que `HAND_REACH` a
-## propósito: el arma del pack es un palo de 16 px, y adelantarlo 5 lo clavaba en el
-## suelo por debajo de los pies.
-const HAND_VERTICAL_REACH := 3.0
-
-## Altura de la mano sobre los pies. Medido sobre la persona horneada (26 px de
-## alto, torso a -14): con 10 la mano cae a la cadera en las cuatro orientaciones
-## y el arma de 16 px cruza el cuerpo entero sin salirse por debajo de los pies.
-## Los límites duros los pone `_hand_on_body` en las pruebas: la mano tiene que
-## quedar por debajo de la cabeza (y > -16) y por encima de los pies.
-const HAND_HEIGHT := 10.0
-
-## Inclinación del arma quieta, en radianes, hacia donde mira el jugador. La textura
-## del arma apunta hacia arriba, así que sin inclinar nada sale vertical en las cuatro
-## orientaciones. Girarlo por el ángulo de la mirada lo tumbaba en horizontal al mirar
-## hacia arriba o hacia abajo: una barra de 16 px de lado cruzando la cabeza.
-const HAND_TILT := 0.32
-
-## Amplitud del arco de golpe, en radianes a cada lado de la inclinación.
-const HAND_SWING := 1.1
 
 ## Velocidad de caminar. Sale de `GameConfig` y no de un número aquí: antes la vista
 ## traía la suya (110 px/s) y el presentador se la copiaba al `MovementController`, así
@@ -81,16 +55,11 @@ var _is_dodging: bool = false
 ## comprobado sobre las hojas: `Push`/`Pull` no son un bloqueo), así que este dato
 ## solo existe para que la vista lo recuerde el día que haya arte.
 var _is_blocking: bool = false
-var _weapon_texture: Texture2D = null
-var _weapon_sprite: Sprite2D = null
 var _actor: ActorSprite = null
 var _punch: PunchArm = null
-## Golpe a puños o con arma: decide si la mano lleva algo.
+## Golpe a puños o con arma: a puños el cuerpo usa su propio puñetazo; con arma
+## ya no se dibuja nada en la mano (el stick del pack no encaja sobre el Hormelz).
 var _is_unarmed: bool = true
-## Si hay un arma con textura en la mano. Va aparte de `visible` porque la muerte
-## esconde el sprite sin que el jugador deje de llevar arma: al reaparecer hay que
-## volver a enseñarlo, y antes se quedaba invisible para el resto de la partida.
-var _is_armed: bool = false
 
 
 ## Vuelve a la vida tras morir. La vista no decide el punto de reaparición (eso es
@@ -166,13 +135,6 @@ func apply_motion(moved: Vector2) -> void:
 		_is_walking = walking
 		_refresh_animation()
 	move_performed.emit(moved)
-
-
-## ¿Se está dibujando un arma en la mano? Los puños no se dibujan, y es lo que
-## distingue a simple vista el golpe sin arma del golpe con arma.
-var is_armed: bool:
-	get:
-		return _is_armed
 
 
 func set_facing(facing: Vector2) -> void:
@@ -255,42 +217,18 @@ func end_attack() -> void:
 	_refresh_animation()
 
 
-## Cambia el arma visible y, con ella, el alcance de la hitbox.
+## Cambia el arma del combate: el alcance de la hitbox y si el golpe es a puños.
 ##
-## Los puños no tienen textura: es lo que distingue a simple vista el golpe sin
-## arma del golpe con arma, y `WeaponCatalog` es quien lo decide.
+## No se dibuja ningún sprite en la mano: el stick del pack (la piedra, un palo
+## de 3x16 px) no encaja sobre el cuerpo del Hormelz y al atacar quedaba flotando
+## fuera de la mano, rompiendo la lectura de la animación. El arma sigue
+## existiendo para pegar (daño y alcance); lo único que desaparece es su dibujo.
 func set_weapon(weapon: Weapon) -> void:
 	if weapon == null:
 		return
 	_is_unarmed = WeaponCatalog.is_unarmed(weapon)
 	if hitbox != null:
 		hitbox.set_reach(weapon.attack_range)
-	if _is_unarmed or weapon.texture_path.is_empty() or not ResourceLoader.exists(weapon.texture_path):
-		_weapon_texture = null
-		_is_armed = false
-		_refresh_weapon_visibility()
-		return
-	_weapon_texture = load(weapon.texture_path) as Texture2D
-	var sprite := _ensure_weapon_sprite()
-	sprite.texture = _weapon_texture
-	# El arma se ancla por el mango y no por el centro del dibujo: así el nodo es la
-	# mano y el arco del golpe gira alrededor de ella en vez de despegar el arma de la
-	# mano a mitad de swing.
-	sprite.offset = Vector2(
-		-_weapon_texture.get_width() * 0.5, -_weapon_texture.get_height()
-	)
-	_is_armed = true
-	_refresh_weapon_visibility()
-	_place_weapon()
-
-
-## El arma se dibuja cuando se lleva una y el jugador no está muerto.
-##
-## La muerte la esconde y `revive()` la vuelve a enseñar. Antes la muerte la apagaba
-## directamente en el sprite y nadie la volvía a encender, así que al reaparecer el
-## jugador se quedaba con las manos vacías aunque siguiera llevando la piedra.
-func _refresh_weapon_visibility() -> void:
-	_ensure_weapon_sprite().visible = _is_armed and not _is_dead
 
 
 ## Aturdimiento: parpadeo rojo para que el golpe se note.
@@ -391,7 +329,6 @@ func set_dead(active: bool) -> void:
 			_punch.end()
 		if _actor != null:
 			_actor.play(ActorSprite.DEAD, true)
-	_refresh_weapon_visibility()
 	_apply_tint()
 	_refresh_animation()
 
@@ -414,24 +351,6 @@ func _apply_tint() -> void:
 		modulate = tint
 
 
-func _ensure_weapon_sprite() -> Sprite2D:
-	if _weapon_sprite != null:
-		return _weapon_sprite
-	_weapon_sprite = Sprite2D.new()
-	_weapon_sprite.name = "Weapon"
-	# Sin `centered`: con `centered = true` el rectángulo que se dibuja es
-	# `posicion + offset - tamaño / 2`, así que un `offset.y = -altura` de "anclar por
-	# el mango" deja el borde inferior del arma media altura por encima de la mano y el
-	# palo aparece flotando por encima de la cabeza. Sin `centered` el rectángulo es
-	# `posicion + offset` y el nodo cae justo en el mango, que es lo que quiere el arco
-	# del golpe: que gire alrededor de la mano.
-	_weapon_sprite.centered = false
-	_weapon_sprite.z_index = 1
-	_weapon_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(_weapon_sprite)
-	return _weapon_sprite
-
-
 func _physics_process(delta: float) -> void:
 	if _swing >= 0.0:
 		_swing += delta
@@ -441,12 +360,6 @@ func _physics_process(delta: float) -> void:
 			# una duración conocida y aquí se cierra al cumplirse. Con las dos cosas el
 			# cuerpo vuelve a caminar pase lo que pase.
 			end_attack()
-	# El arma sigue a la mano en todos los fotogramas, no solo durante el golpe. Antes
-	# solo se colocaba al pasar a quieto, de modo que al caminar se quedaba clavada en
-	# el centro del cuerpo (tapando las piernas) y al soltar el botón saltaba de golpe
-	# a la posición y a la inclinación nuevas: por eso al parar el personaje parecía
-	# volverse de lado.
-	_place_weapon()
 	if _punch != null and _punch.is_active():
 		_punch.end()
 	# El dibujo de depuración sigue al cuerpo: mientras está activo se refresca
@@ -484,39 +397,6 @@ func _refresh_animation() -> void:
 		_actor.play(ActorSprite.WALK)
 		return
 	_actor.play(ActorSprite.IDLE)
-	_place_weapon()
-
-
-## Coloca el arma en la mano y la orienta con el arco del golpe.
-##
-## Sin arma no se dibuja nada: es la diferencia visible entre el golpe a puños y el
-## golpe con arma.
-func _refresh_punch() -> void:
-	if _punch == null:
-		return
-	if _swing >= 0.0 and _is_unarmed:
-		var r := _swing_ratio()
-		_punch.update(r, _facing)
-		_punch.position = _punch.body_shift() + GameConfig.ACTOR_SPRITE_OFFSET
-		if not _punch.is_active():
-			_punch.begin(_facing)
-	else:
-		if _punch.is_active():
-			_punch.end()
-
-
-func _place_weapon() -> void:
-	var sprite := _weapon_sprite
-	if sprite == null or not sprite.visible or _weapon_texture == null:
-		return
-	sprite.position = hand_position()
-	# Fuera del golpe el arma descansa derecha, y el arco solo suma mientras dura el
-	# swing. Antes el arco estaba descentrado: su primer valor ya era `-HAND_SWING`, así
-	# que el arma salía inclinada hacia atrás incluso sin golpear.
-	var arc := 0.0
-	if _swing >= 0.0:
-		arc = (_swing_ratio() * 2.0 - 1.0) * HAND_SWING
-	sprite.rotation = _facing.y * HAND_TILT + arc
 
 
 ## Si el arco del golpe está en marcha. Lo consulta quien necesite saber si toca la pose
@@ -528,21 +408,6 @@ func is_swinging() -> bool:
 ## Segundos que lleva el arco del golpe en marcha. Vale `-1` cuando no hay arco.
 func swing_elapsed() -> float:
 	return _swing
-
-
-## Posición de la mano en el cuerpo, sin depender del estado del golpe. Lo consultan
-## los tests para comprobar que el arma cae al costado del cuerpo y no encima de él.
-func hand_position(direction: Vector2 = _facing) -> Vector2:
-	# La mano va siempre al costado. Mirando a un lado se adelanta hacia ese lado, y
-	# mirando al frente o de espaldas se queda en el lado que lleva el arma. Adelantarla
-	# en vertical era justo lo que ponía el arma encima de las piernas al caminar hacia
-	# abajo, que es la dirección con la que más se camina.
-	var side := signf(direction.x)
-	if is_zero_approx(side):
-		side = 1.0
-	return Vector2(
-		side * HAND_REACH, direction.y * HAND_VERTICAL_REACH - HAND_HEIGHT
-	)
 
 
 ## Avance del swing, de 0 a 1, sobre la duración del ataque en curso.

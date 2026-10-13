@@ -21,8 +21,8 @@ recorte:
 | --- | --- | --- |
 | `assets/characters/human_player.png` | persona (bit-era, CC0): el jugador por defecto y los cuatro tipos de enemigo (64x128) | 16x16, 4 columnas x 8 filas: filas 0-3 caminar (abajo/lateral/arriba/lateral espejo), fila 4 salto/caída/muerte (muerte en columna 2, yacente), fila 5 golpe (3 fotogramas, la columna 3 queda vacía), filas 6-7 vacías |
 | `assets/characters/ninja_blue.png` | ninja clásico del pack: fallback del jugador (64x112) | 16x16, 4 columnas x 7 filas: filas 0-3 caminar, fila 4 golpe, filas 5-6 salto/objeto |
-| `assets/weapons/blade.png` | cuchillo (6x11) | el sprite es el icono y el arma en mano |
-| `assets/weapons/rock.png` | piedra (3x16) | ídem |
+| `assets/weapons/blade.png` | cuchillo (6x11) | solo icono del HUD y de la mochila (el arma ya no se dibuja en la mano) |
+| `assets/weapons/rock.png` | piedra (3x16) | ídem: icono, no se dibuja en la mano |
 | `assets/fx/slash.png` | arco de golpe del jugador y de los enemigos (128x32) | **32x32**, 4 fotogramas en una sola fila — no es 16x32 |
 | `assets/environment/kenney_tiny_dungeon/Tilemap/tilemap.png` | atlas del terreno (203x186) | 16x16 con 1 px de separación, 12x11 celdas |
 
