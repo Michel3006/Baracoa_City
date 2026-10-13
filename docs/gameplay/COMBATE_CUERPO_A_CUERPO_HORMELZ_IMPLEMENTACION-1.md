@@ -2149,68 +2149,81 @@ DUMMY DIES
 PLAYER CONTINUES
 ```
 
+### ESTADO AL CIERRE (F1–F10)
+
+La cadena está completa y es la que recorren las suites: el jugador golpea al
+muñeco (sección 33), el golpe entra por la hitbox, salen las partículas, el hit
+stop y la sacudida (secciones 36-38), el muñeco reacciona con su clip de trance
+y su empuje, y el atacante recupera. Un segundo golpe puede encadenarse
+(buffer + cadenas, secciones 22-23), la patada tiene su propia cadena, y el
+muñeco muere —con su muerte yacente— y reaparece en 2 s. Lo único de la columna
+que la demo no puede hacer todavía es sonar: la sección 39 (audio) queda
+pendiente y es la única sección que no se cierra con los tests en verde (ver
+sección 65, LIMITACIONES).
+
 ------------------------------------------------------------------------
 
 # 64. DEFINITION OF DONE
 
 ## Personaje
 
--   [ ] Hormelz es el personaje por defecto.
--   [ ] Ninja queda como fallback.
--   [ ] Idle funciona.
--   [ ] Walk funciona.
--   [ ] Direcciones correctas.
--   [ ] Pivot correcto.
--   [ ] Escala correcta.
--   [ ] No hay sprites borrosos.
+-   [x] Hormelz es el personaje por defecto.
+-   [x] Ninja queda como fallback.
+-   [x] Idle funciona.
+-   [x] Walk funciona.
+-   [x] Direcciones correctas.
+-   [x] Pivot correcto.
+-   [x] Escala correcta.
+-   [x] No hay sprites borrosos.
 
 ## Combate
 
--   [ ] CombatController.
--   [ ] CombatState.
--   [ ] AttackDefinition.
--   [ ] Jab.
--   [ ] Hook.
--   [ ] Straight.
--   [ ] Elbow.
--   [ ] Kicks.
--   [ ] Combo.
--   [ ] Stamina.
--   [ ] Recovery.
--   [ ] Input buffer.
--   [ ] Hitbox.
--   [ ] Hurtbox.
--   [ ] Damage.
--   [ ] Stagger.
--   [ ] Knockback.
--   [ ] Hit reaction.
--   [ ] Death.
+-   [x] CombatController.
+-   [x] CombatState.
+-   [x] AttackDefinition.
+-   [x] Jab.
+-   [x] Hook.
+-   [x] Straight.
+-   [x] Elbow.
+-   [x] Kicks.
+-   [x] Combo.
+-   [x] Stamina.
+-   [x] Recovery.
+-   [x] Input buffer.
+-   [x] Hitbox.
+-   [x] Hurtbox.
+-   [x] Damage.
+-   [x] Stagger.
+-   [x] Knockback.
+-   [x] Hit reaction.
+-   [x] Death.
 
 ## Feedback
 
--   [ ] Hit-stop.
--   [ ] Impact VFX.
--   [ ] Camera shake.
--   [ ] Audio hooks.
--   [ ] Debug hitboxes.
+-   [x] Hit-stop.
+-   [x] Impact VFX.
+-   [x] Camera shake.
+-   [ ] Audio hooks. *(sección 39: el bus de eventos está, el audio no; no
+      bloquea el sistema y queda como trabajo futuro, ver sección 65)*
+-   [x] Debug hitboxes.
 
 ## Calidad
 
--   [ ] Tests pasan.
--   [ ] Proyecto ejecuta.
--   [ ] No hay errores relevantes.
--   [ ] Movimiento no se rompió.
--   [ ] Cámara no se rompió.
--   [ ] Sistemas existentes no se rompieron.
+-   [x] Tests pasan.
+-   [x] Proyecto ejecuta.
+-   [x] No hay errores relevantes.
+-   [x] Movimiento no se rompió.
+-   [x] Cámara no se rompió.
+-   [x] Sistemas existentes no se rompieron.
 
 ## Arquitectura
 
--   [ ] CombatSystem no depende de una textura.
--   [ ] AttackDefinitions son data-driven.
--   [ ] Visual y gameplay están separados.
--   [ ] Preparado para NPC.
--   [ ] Preparado para multiplayer.
--   [ ] Preparado para armas.
+-   [x] CombatSystem no depende de una textura.
+-   [x] AttackDefinitions son data-driven.
+-   [x] Visual y gameplay están separados.
+-   [x] Preparado para NPC.
+-   [x] Preparado para multiplayer.
+-   [x] Preparado para armas.
 
 ------------------------------------------------------------------------
 
@@ -2221,67 +2234,201 @@ Al terminar, entregar:
 ``` text
 ## RESUMEN
 
+Sistema de combate cuerpo a cuerpo completo para el jugador y los enemigos,
+montado sobre el pack Hormelz (MeleeCharacter) horneado en hojas utilizables:
+12 ataques en tres cadenas con fases por ataque, buffer de entrada, stamina,
+recuperación, trances (hit reaction / stagger), knockback, esquive, guardia,
+hit stop, sacudida de cámara, VFX, HUD de depuración y un muñeco de
+entrenamiento que recibe la cadena completa del golpe y reaparece en 2 s. Todo
+sobre la arquitectura por capas del proyecto (dominio puro sin Godot, señales
+entre capas, números en GameConfig) y con seis suites en verde.
+
 ## DIAGNÓSTICO ORIGINAL
+
+El proyecto venía de la Fase 1 con movimiento, enemigos con IA básica y un
+golpe único de puño dibujado por código (3 px) sin cadenas, sin fases, sin
+trance y sin vidas ajustadas al sistema por fases. Los enemigos usaban una hoja
+16x16 que solo tenía caminar: golpeaban con la pose de frente y morían de pie,
+porque la hoja no tenía fila de ataque ni de muerte. La especificación (este
+documento) pedía un sistema de combate real, y para eso había que (1) hornear
+el pack Hormelz en hojas por dirección con sus clips medidos del JSON original,
+(2) construir el combate por fases con ataques data-driven y (3) dar feedback
+de impacto y un objetivo de pruebas que respondiera igual que un enemigo sin
+depender de la IA.
 
 ## ARCHIVOS MODIFICADOS
 
+- scripts/domain/combat/: attack_definition.gd (fases, ventanas, cadenas),
+  combat_state.gd (FREE/WINDUP/ACTIVE/RECOVERY/HIT_REACTION/STAGGERED/
+  DODGING/BLOCKING/DEAD).
+- scripts/application/combat/melee_combat.gd (fases, buffer, cadenas, defensa)
+  y scripts/application/npc/npc_combat.gd (la misma ley de daño; en F7
+  `died()` por fin se emite).
+- scripts/domain/player/ y scripts/domain/npc/: estados del cuerpo y
+  `NpcBehavior.dummy()` para el muñeco.
+- scripts/presentation/: player_presenter/view y npc_presenter/view (hit stop,
+  tintes de estado), actors/actor_sprite.gd (clips con hoja por orientación),
+  actors/actor_visual_catalog.gd (Hormelz por defecto, tintes de enemigo y de
+  muñeco), world/main_world_view.gd (monta el muñeco, relevo de impacto a
+  cámara), combat/camera_shake.gd, combat/combat_debug.gd,
+  combat/impact_effect.gd y combat/slash_effect.gd.
+- scripts/infrastructure/configuration/game_config.gd: todos los números
+  ajustables (frames, ratios, costes, hit stop, tintes, muñeco).
+- project.godot: attack_heavy (K), attack_kick (L), block (Space), dodge
+  (Shift), debug_hud (F1), debug_hitboxes (F2).
+- tests/unit/ y tests/integration/: casos nuevos y ajustes de los runners.
+
 ## ARCHIVOS CREADOS
+
+- scripts/domain/combat/attack_catalog.gd, combat_reaction.gd,
+  combat_impact.gd.
+- scripts/domain/npc/combat_dummy.gd (el muñeco es un dominio puro).
+- scripts/presentation/actors/hormelz_visual_data.gd (24 clips medidos del
+  JSON original).
+- scripts/presentation/npc/combat_dummy_spawner.gd.
+- scripts/presentation/combat/: combat_debug.gd, camera_shake.gd,
+  impact_effect.gd.
+- assets/characters/humans/hormelz_melee/: 92 PNG horneados del pack
+  (clip x dirección).
+- tests/unit/test_combat_reaction.gd, test_combat_impact.gd,
+  test_combat_dummy.gd; casos de F4-F8 en test_melee_combat, test_attack_catalog,
+  test_npc_combat y en los runners de integración (combat, npc_combat, startup,
+  world_physics).
 
 ## ARCHIVOS ELIMINADOS
 
+- Hojas de los enemigos bestia (slime.png, owl.png, spider_red.png, lizard.png)
+  y la de zarpas (claw.png): al pasar los cuatro tipos a personas con la hoja
+  del jugador y un tinte de paleta por tipo, esas hojas no tenían fila de golpe
+  ni muerte yacente y dejaron de usarse. Decisión consta en AGENTS.md.
+
 ## ASSET HORMELZ
 
-Animaciones encontradas:
-...
+Animaciones encontradas: 24 clips del JSON original del pack:
+idle, fight_idle, walk, walk_back, left_jab, right_jab, left_hook, right_hook,
+straight, elbow, front_kick, front_kick2, high_kick, side_kick, stomp_kick,
+combo, hit_light, hit_body, hit_head, dead, dead_alt, roll_forward, roll_stand
+y attack.
 
-Direcciones:
-...
+Direcciones: 4 principales por clip (dir2 izquierda, dir4 arriba, dir6 derecha,
+dir8 abajo), cada una con su archivo propio: un clip es un mapa de hojas, no
+una tira con espejos. La línea de planta va por clip y dirección ("feet") y
+ancla el cuerpo al suelo.
 
-Frame size:
-...
+Frame size: celda del pack 42x44 px, recortada por hoja en el recuento del
+clip, NEAREST (sin suavizado, sprites nítidos). El recorte es la celda lineal
+de la hoja de la orientación actual.
 
-Frames:
-...
+Frames: cada clip trae su recuento del JSON original (fotogramas sin huecos);
+fps de juego: reposo estático, caminar a 50, combate a 68 — el ritmo al que se
+calibró todo el sistema.
 
 ## MAPPING DE ANIMACIONES
 
-...
+idle / fight_idle → reposo (el segundo para el duelo).
+walk → caminar, 4 direcciones.
+walk_back → existe en el pack, sin uso todavía (no hay clip de guardia: la
+guardia mantiene la pose, §31).
+left_jab, right_jab, left_hook, right_hook, straight, elbow, front_kick,
+front_kick2, high_kick, side_kick, stomp_kick, combo → los 12 ataques del
+catálogo.
+hit_light, hit_body, hit_head → trances por tier del daño.
+dead / dead_alt → muerte yacente (jugador, enemigos y muñeco comparten hoja).
+roll_forward → esquive del jugador (DODGE_CLIP, 16 fotogramas a 68 fps);
+roll_stand existe en el pack sin uso.
 
 ## SISTEMA DE COMBATE
 
-Estados:
-...
+Estados: CombatState con FREE, WINDUP, ACTIVE, RECOVERY, HIT_REACTION,
+STAGGERED, DODGING, BLOCKING, DEAD: el caso de uso (MeleeCombat / NpcCombat)
+decide el estado del cuerpo y la vista solo lo pinta.
 
-Ataques:
-...
+Ataques: 12 en tres cadenas — light (jab, jab, hook, elbow), heavy (straight,
+right_hook, combo) y kick (front_kick, front_kick2, high_kick, side_kick,
+stomp). La cadena avanza con la entrada guardada en el buffer y se reinicia al
+terminar sin entrada. Cada ataque es data-driven (AttackDefinition): fases,
+ventana de golpe, daño, coste de stamina, multiplicador de movimiento,
+knockback, stagger y reacción.
 
 ## TIMINGS
 
-...
+Fases por ataque con la ventana de golpe centrada en el fotograma de contacto.
+Los frames son los del pack a 68 fps: `clip_frames` y `contact_frame` por
+ataque viven en AttackCatalog._DATA (medidos de la hoja, no inventados); la
+recuperación y el cooldown están en GameConfig. FRONT_KICK_2 y COMBO no existen
+en la tabla de la sección 29 y heredan el daño y la stamina de su familia como
+decisión de calibración.
 
 ## HITBOXES
 
-...
+Cuerpo: CharacterBody2D de radio 5 (BODY_RADIUS) tanto jugador como enemigo; el
+que golpea usa un Area2D que solo se enciende en la ventana del ataque
+(HITBOX_ACTIVE_RATIO 0.35 de la duración): un círculo a HITBOX_FORWARD_RATIO
+(0.55 del alcance) delante del torso, de radio HITBOX_RADIUS_RATIO (0.45 del
+alcance); alcance base del puño 12 (`PUNCH_REACH`), y las armas del inventario
+aportan el suyo. Un Area2D no tiene excepciones en Godot 4: el sensor filtra a
+su propio dueño con una lista propia. Los objetivos de golpeo tienen que ser
+CharacterBody2D: un StaticBody2D jamás aparece en get_overlapping_bodies().
 
 ## EFECTOS
 
-...
+Derivados del tier del impacto (CombatImpact): hit stop 0.035/0.05/0.07 s
+(light/medium/heavy), sacudida de cámara escalada que decae sola, y partículas
+de 1x1 px por cantidad del tier. El arco del golpe (SlashEffect) sale del
+torso con su hoja de efecto de 32x32 (4 fotogramas, una fila, origen en el
+centro del borde inferior). HUD de depuración (F1) y hitboxes (F2) dibujadas
+con draw_rect sobre la geometría real.
 
 ## TESTS
 
-...
+Seis suites en verde, con el log completo sin SCRIPT ERROR (un error por
+consola anula el verde):
+unit 214/214 (melee 57 casos, reacciones 20, impacto 7, muñeco 7, catálogo,
+NPC y demás), world_physics 6/6, combat 16/16, npc_combat 22/22,
+startup 28/28 (incluye el muñeco: existe y es pasivo, un golpe real del jugador
+le entra y reacciona, su presentador se congela con el hit stop y se suelta
+solo, muere y reaparece en su puesto), inventory 9/9.
 
 ## PROBLEMAS
 
-...
+- NpcCombat.died declarada sin emisor (F7): la reaparición del muñeco jamás
+  arrancaba y ninguna suite lo veía, porque la vista se entera de la muerte por
+  _sync_state y los tests de combate no escuchan la señal. Ahora _receive_computed
+  la emite al matar y hay un caso unitario que la lockea.
+- El hit stop aplaza el sync visual (F7): la vista de la muerte llega 0.07 s
+  después del golpe mortal, porque el presentador del muñeco se congela antes de
+  correr _sync_state. El caso de integración espera el reloj en vez de suponer.
+- El jugador de los tests acumula posición entre casos (F7): el caso del muñeco
+  lo acerca por la vía única de teleportación antes de caminar.
+- La F9 casi "arregla" un mapa de teclas que no estaba roto: leer 4194306 como
+  Esc (es KEY_TAB) convenció de un conflicto inexistente con ui_cancel; la
+  prueba que sintetiza la pulsación física de Tab deshizo el error antes de
+  empujarlo. Queda documentado en §13 como lección.
 
 ## LIMITACIONES
 
-...
+- Audio (sección 39): el bus de eventos del dominio está, pero no hay motor ni
+  sonidos; el DoD lo deja abierto a propósito y los tests no dependen de él.
+- La guardia no tiene animación propia (el pack no la trae): funciona con el
+  cuerpo en la pose previa (§31), sin fingir un clip inexistente.
+- El muñeco es un elemento de la zona de prueba; no hay un sistema de
+  entrenamiento distribuido por el mapa.
+- El enemigo fuerte mata a un jugador quieto en ~15 s: dentro de lo razonable,
+  sin calibrar jugando (feedback real pendiente).
+- Sin código de red: el combate está preparado para Fase 2 (el dominio decide y
+  el servidor validará), pero el multijugador no existe todavía.
 
 ## TRABAJO FUTURO
 
-...
+- Audio (§39): eventos attack_start / hit_* / hurt / death / dodge al bus, con
+  los sonidos del pack o placeholders; la Fase 2 debe oírlos del bus y no de
+  los nodos.
+- Calibración con feedback real de partida: números en GameConfig (daño del
+  enemigo fuerte, cooldowns, costes de stamina).
+- Textos y pantalla propia del entrenamiento si el muñeco gana sitio en el
+  mapa.
+- Fase 2: servidor autoritativo validando combate; el hit stop queda como
+  presentación del cliente y el servidor jamás se congela (§36).
 ```
 
 ------------------------------------------------------------------------
