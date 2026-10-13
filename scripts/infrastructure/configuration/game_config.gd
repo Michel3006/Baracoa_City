@@ -307,6 +307,37 @@ const FX_ORIGIN_OFFSET := 14.0
 ## Z del efecto de golpe: por encima del mundo y del NPC, por debajo del HUD.
 const FX_Z_INDEX := 8
 
+# --- Personalizacion visual: ropa y peinados (plan de ropa, coste 0) ---
+## Proporcion del cuerpo que cubre una camiseta, medida sobre los pies del
+## personaje.
+##
+## No es una caja fija: es la banda de piel entre el final de la cabeza y por
+## debajo de la cadera, en fracciones de la altura del cuerpo de ESE fotograma.
+## Medido sobre el pack Hormelz (celda 42x44, cuerpo de ~27 px): la cabeza ocupa
+## del 0 al ~26 % y el pantalon rojo empieza al ~52 %. Asi la prenda sigue al
+## cuerpo en cada fotograma (el torso de una patada no esta donde el del reposo)
+## en vez de quedarse clavada en una posicion.
+const GARMENT_SHIRT_TOP_RATIO := 0.26
+const GARMENT_SHIRT_BOTTOM_RATIO := 0.56
+## Pelo: la banda superior de la cabeza, por encima de los ojos.
+##
+## OJO: el pack del jugador va rapado (medido: no hay mechón de pelo dibujado,
+## la cabeza es piel y ojos), así que esto no recolorea un pelo que exista: pinta
+## la coronilla. La banda se corta POR ENCIMA de la fila de los ojos (medida: los
+## ojos caen al ~0,26 de la altura del cuerpo y la cabeza entera es ese 0,26, así
+## que la coronilla es el 0,12) para no pintarle la cara de color de pelo, que es
+## lo que salía con una banda más ancha. Es la limitación conocida de la prueba a
+## coste 0; un peinado con forma necesita una capa de superposición (ver el plan).
+const GARMENT_HAIR_TOP_RATIO := 0.0
+const GARMENT_HAIR_BOTTOM_RATIO := 0.12
+## Un cuerpo tumbado o rodando es mas ancho que alto: cuando se cumple este
+## factor, la banda de la prenda se aplica en horizontal y centrada, en vez de en
+## vertical desde la cabeza. Sin esto, una muerte yacente se llevaba una franja
+## horizontal de pintura en lugar del torso.
+const GARMENT_WIDE_BODY_RATIO := 1.2
+const GARMENT_WIDE_BAND_MIN := 0.36
+const GARMENT_WIDE_BAND_MAX := 0.64
+
 ## Golpe a puños: el brazo y el puño se dibujan por código sobre la pose
 ## direccional del cuerpo (`PunchArm`).
 ##

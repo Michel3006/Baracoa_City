@@ -64,6 +64,10 @@ func _run() -> void:
 	await _check("un golpe real del jugador entra al muñeco y reacciona", _dummy_takes_a_hit_and_reacts)
 	await _check("un golpe fuerte al muñeco congela su presentador y se descongela solo", _dummy_presenter_hit_stops)
 	await _check("el muñeco muere y reaparece a los dos segundos", _dummy_dies_and_respawns)
+	await _check("al jugador se le puede poner y quitar ropa", _garment_can_be_put_on_and_taken_off)
+	await _check("la prenda sigue al cuerpo sin reloj propio", _garment_follows_the_body_state)
+	await _check("la prenda se dibuja encima del cuerpo y no toca la física", _garment_is_a_layer_over_the_body)
+	await _check("el peinado se pinta en la cabeza y no en el torso", _hair_paints_the_head_not_the_torso)
 
 	_report()
 	quit(0 if _failed == 0 else 1)
@@ -991,6 +995,203 @@ func _names(nodes: Array) -> String:
 	for node in nodes:
 		labels.append("%s(%s, padre %s)" % [node.name, node.get_instance_id(), node.get_parent().name])
 	return ", ".join(labels)
+
+
+# --- personalizacion: ropa y peinados (plan de ropa, Fase 3) ---
+
+## Capas de ropa y peinado del jugador, indexadas por parte del cuerpo.
+func _garment_layers(player: PlayerView) -> Dictionary:
+	var layers: Dictionary = {}
+	for child in player.get_children():
+		if child is GarmentLayer:
+			layers[child.part] = child
+	return layers
+
+
+## Cuántos píxeles de la superposición de una capa son justo de ese color.
+##
+## Contar píxeles, no mirar el `modulate`: es la regla del proyecto para lo que
+## se ve. Un `modulate` aplicado no dice qué sale dibujado; un recuento sí.
+func _count_overlay_color(layer: GarmentLayer, color: Color) -> int:
+	if layer == null or layer.texture == null:
+		return 0
+	var image := layer.texture.get_image()
+	if image == null:
+		return 0
+	var total := 0
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			var px := image.get_pixel(x, y)
+			if px.a8 > 0 and px.r8 == color.r8 and px.g8 == color.g8 and px.b8 == color.b8:
+				total += 1
+	return total
+
+
+## La ropa es cosmética: se pone y se quita, y mientras no hay nada puesto la
+## capa no dibuja nada (no tapa al cuerpo con una prenda fantasma).
+func _garment_can_be_put_on_and_taken_off() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
+		return
+	var shirt := _garment_layers(player).get(GarmentDefinition.Part.SHIRT) as GarmentLayer
+	if not _context.check(shirt != null, "el jugador no tiene capa de camiseta"):
+		return
+
+	# De entrada, sin ropa: la capa no dibuja.
+	player.set_shirt(&"")
+	await _settle(2)
+	_context.check(not shirt.is_painting(), "sin camiseta la capa no debería pintar nada")
+
+	# Se pone una camiseta: la capa dibuja, y su superposición no es la hoja del
+	# cuerpo (si lo fuera, taparía al jugador con una segunda copia).
+	player.set_shirt(GarmentCatalog.SHIRT_RED)
+	await _settle(2)
+	_context.check(shirt.is_painting(), "con camiseta la capa debería pintar")
+	_context.check(
+		shirt.texture != null and shirt.texture != actor.texture,
+		"la superposición de la camiseta no puede ser la propia hoja del cuerpo"
+	)
+	var base: Color = GarmentCatalog.shirt(
+		GarmentCatalog.SHIRT_RED
+	).palette[GarmentCatalog.SKIN_BASE]
+	_context.check(
+		_count_overlay_color(shirt, base) > 0,
+		"la superposición no trae ni un píxel del color de la camiseta"
+	)
+
+	# Se la quita: vuelve a estar como estaba.
+	player.set_shirt(&"")
+	await _settle(2)
+	_context.check(not shirt.is_painting(), "quitada la camiseta la capa debería dejar de pintar")
+
+
+## La capa no tiene reloj propio: copia fotograma, espejo, rejilla y anclaje del
+## cuerpo. Se camina en las cuatro direcciones y se comprueba que en cada
+## fotograma dibujado la prenda y el cuerpo coinciden.
+##
+## Esto es lo que impide el fallo clásico de una capa con estado propio: la ropa
+## moviéndose a su aire mientras el cuerpo va por otro lado.
+func _garment_follows_the_body_state() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	var shirt := _garment_layers(player).get(GarmentDefinition.Part.SHIRT) as GarmentLayer
+	if not _context.check(actor != null and shirt != null, "faltan el cuerpo o la capa de ropa"):
+		return
+
+	player.set_shirt(GarmentCatalog.SHIRT_BLUE)
+	await _settle(2)
+	if not _context.check(shirt.is_painting(), "la capa no pinta con la camiseta puesta"):
+		return
+
+	var desync := 0
+	var samples := 0
+	var textures: Dictionary = {}
+	for action: StringName in [&"move_right", &"move_down", &"move_left", &"move_up"]:
+		Input.action_press(action, 1.0)
+		for _frame: int in range(10):
+			await physics_frame
+			if actor.frame != shirt.frame or actor.flip_h != shirt.flip_h:
+				desync += 1
+			if shirt.texture != null:
+				textures[shirt.texture.get_instance_id()] = true
+			samples += 1
+		Input.action_release(action)
+	await _settle(2)
+
+	_context.check(samples > 0, "no se llegó a caminar: el caso no mide nada")
+	_context.check_equal(desync, 0, "el cuerpo y la prenda se separaron en %d fotogramas" % desync)
+	_context.check(
+		textures.size() >= 2,
+		"la prenda no se reconstruyó por orientación: solo %d superposición(es)" % textures.size()
+	)
+	player.set_shirt(&"")
+	await _settle(1)
+
+
+## La prenda es una capa de dibujo: va encima del cuerpo (mismo `z_index`,
+## después en el árbol) y no añade un solo nodo de física, así que no puede
+## cambiar el combate. Se comprueba que el cuerpo de combate y la hitbox del
+## jugador siguen exactamente donde estaban.
+func _garment_is_a_layer_over_the_body() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as Node2D
+	var shirt := player.get_node_or_null("ShirtLayer") as Node2D
+	if not _context.check(actor != null and shirt != null, "faltan el cuerpo o la capa de ropa"):
+		return
+
+	player.set_shirt(GarmentCatalog.SHIRT_GREEN)
+	await _settle(2)
+
+	_context.check_equal(
+		shirt.z_index, actor.z_index,
+		"la capa y el cuerpo deberían dibujarse en la misma franja de z"
+	)
+	_context.check(
+		shirt.get_index() > actor.get_index(),
+		"la capa debería dibujarse después del cuerpo (encima)"
+	)
+
+	var physics := 0
+	for child in shirt.get_children():
+		if child is CollisionObject2D or child is Area2D or child is CollisionShape2D:
+			physics += 1
+	_context.check_equal(physics, 0, "la capa de ropa no debería traer nodos de física")
+	_context.check(player.combat_target != null, "el jugador se quedó sin cuerpo de combate")
+	_context.check(player.hitbox != null, "el jugador se quedó sin hitbox")
+
+	player.set_shirt(&"")
+	await _settle(1)
+
+
+## El peinado se pinta en la parte alta de la cabeza y la camiseta en el torso, y
+## las dos bandas no se solapan: ninguna capa pisa a la otra.
+func _hair_paints_the_head_not_the_torso() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var layers := _garment_layers(player)
+	var shirt := layers.get(GarmentDefinition.Part.SHIRT) as GarmentLayer
+	var hair := layers.get(GarmentDefinition.Part.HAIR) as GarmentLayer
+	if not _context.check(shirt != null and hair != null, "faltan las capas de ropa o peinado"):
+		return
+
+	player.set_shirt(GarmentCatalog.SHIRT_RED)
+	player.set_hair(GarmentCatalog.HAIR_BLOND)
+	await _settle(2)
+	if not _context.check(hair.is_painting(), "el peinado no pintó nada"):
+		return
+	var hair_base: Color = GarmentCatalog.hair(
+		GarmentCatalog.HAIR_BLOND
+	).palette[GarmentCatalog.SKIN_BASE]
+	_context.check(
+		_count_overlay_color(hair, hair_base) > 0,
+		"la superposición del peinado no trae ni un píxel de su color"
+	)
+
+	# Las dos superposiciones no comparten un solo píxel: el peinado está por
+	# encima de la banda de la camiseta, no metido en ella.
+	var shirt_image: Image = shirt.texture.get_image() if shirt.texture != null else null
+	var hair_image: Image = hair.texture.get_image() if hair.texture != null else null
+	if shirt_image == null or hair_image == null:
+		_context.check(false, "no se pudieron leer las superposiciones para compararlas")
+	else:
+		var overlap := 0
+		for y in range(hair_image.get_height()):
+			for x in range(hair_image.get_width()):
+				if hair_image.get_pixel(x, y).a8 > 0 and shirt_image.get_pixel(x, y).a8 > 0:
+					overlap += 1
+		_context.check_equal(overlap, 0, "el peinado y la camiseta se solapan en %d píxeles" % overlap)
+
+	player.set_shirt(&"")
+	player.set_hair(&"")
+	await _settle(1)
 
 
 ## La cámara tiembla cuando un golpe conecta (sección 37), y el temblor se

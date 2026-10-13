@@ -57,6 +57,13 @@ var _is_dodging: bool = false
 var _is_blocking: bool = false
 var _actor: ActorSprite = null
 var _punch: PunchArm = null
+## Capas de ropa y pelo. Presentación pura: se dibujan encima del cuerpo y leen
+## su estado, no lo escriben (plan de ropa y peinados).
+var _shirt_layer: GarmentLayer = null
+var _hair_layer: GarmentLayer = null
+## Qué lleva puesto el jugador. Cosmético: no entra en el dominio ni cambia
+## ninguna regla de combate.
+var appearance: AppearanceState = null
 ## Golpe a puños o con arma: a puños el cuerpo usa su propio puñetazo; con arma
 ## ya no se dibuja nada en la mano (el stick del pack no encaja sobre el Hormelz).
 var _is_unarmed: bool = true
@@ -104,6 +111,48 @@ func _build_actor() -> void:
 	if not ActorVisualCatalog.apply_to(ActorVisualCatalog.PLAYER, _actor):
 		GameLogger.warning("El jugador se queda sin sprite", "PlayerView")
 	_build_punch()
+	_build_customization()
+
+
+## Capas de personalización (plan de ropa y peinados).
+##
+## Se añaden después del cuerpo y del brazo para que se dibujen encima, y con
+## `z_index` 0 (el del cuerpo): así la camiseta queda sobre el torso pero por
+## debajo del brazo y del arco de golpe, que van en el 1 y el 8. No tocan
+## colisión, hitbox ni tiempos: son dos `Sprite2D` más que copian el estado del
+## cuerpo.
+func _build_customization() -> void:
+	appearance = AppearanceState.new()
+	_shirt_layer = _add_garment_layer("ShirtLayer", GarmentDefinition.Part.SHIRT)
+	_hair_layer = _add_garment_layer("HairLayer", GarmentDefinition.Part.HAIR)
+
+
+func _add_garment_layer(node_name: String, part: int) -> GarmentLayer:
+	var layer := GarmentLayer.new()
+	layer.name = node_name
+	layer.part = part
+	layer.actor = _actor
+	layer.appearance = appearance
+	layer.z_index = 0
+	add_child(layer)
+	return layer
+
+
+## Se pone una camiseta (id de `GarmentCatalog`) o `&""` para quitarla.
+func set_shirt(id: StringName) -> void:
+	if appearance != null:
+		appearance.set_shirt(id)
+
+
+## Se pone un peinado (id de `GarmentCatalog`) o `&""` para quitarlo.
+func set_hair(id: StringName) -> void:
+	if appearance != null:
+		appearance.set_hair(id)
+
+
+## Qué lleva puesto el jugador. Lo usa la interfaz de personalización.
+func appearance_state() -> AppearanceState:
+	return appearance
 
 
 func _build_hitbox() -> void:

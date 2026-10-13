@@ -32,6 +32,8 @@ const TEST_FILES: PackedStringArray = [
 	"res://tests/unit/test_game_config.gd",
 	"res://tests/unit/test_pixel_font.gd",
 	"res://tests/unit/test_punch_arm.gd",
+	"res://tests/unit/test_garment_catalog.gd",
+	"res://tests/unit/test_garment_recolor.gd",
 ]
 
 var _failures: Array[String] = []
