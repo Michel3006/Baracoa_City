@@ -495,11 +495,15 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 - `export LC_ALL=C LANG=C` para quitar el ruido `xkbcommon` en consola.
 - `~/.local/bin` puede no existir en una máquina nueva: crearlo antes del
   `ln -sf`, o el enlace falla.
-- El **editor** con el puente del agente (`addons/godot_mcp`, servidor MCP en
-  `.opencode/opencode.json`) da lo que las suites no pueden: reloj de juego
-  determinista, input inyectado, estado en vivo y capturas reales. Necesita el
-  editor abierto (aquí, bajo `xvfb`). Detalles, comandos y dos trampas medidas en
-  `docs/tooling/GODOT_MCP.md`.
+- El **editor** con los dos puentes del agente da lo que las suites no pueden:
+  - `addons/godot_mcp` (servidor MCP `godot` en `.opencode/opencode.json`) **juega**:
+    reloj de juego determinista, input inyectado, estado en vivo y capturas reales.
+  - `addons/godot_ai` (servidor MCP `godot-ai` en el mismo fichero) **construye**:
+    escenas, nodos, scripts, recursos, UI, temas, materiales y animaciones, con 47
+    herramientas. Necesita `uv` (`uvx`) y arranca su servidor Python desde el plugin.
+  Los dos necesitan el editor abierto (aquí, bajo `xvfb`) y ven el mismo juego en
+  marcha. Detalles, comandos y trampas medidas en `docs/tooling/GODOT_MCP.md` y
+  `docs/tooling/GODOT_AI.md`.
 
 ## Detalles del diseño que conviene no redescubrir
 
@@ -610,6 +614,13 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
   autoload no se instancia, el puente queda muerto y **las seis suites siguen en
   verde**. Se comprueba preguntándoselo al juego en marcha, no leyendo
   `project.godot`.
+- **El mismo choque se evita al revés: el autoload del otro puente sí lleva `*` y
+  su script NO tiene `class_name`.** `_mcp_game_helper` (`addons/godot_ai`) se
+  registra como singleton y funciona porque `game_helper.gd` renuncia al
+  `class_name` a propósito. Las dos formas valen; lo que no vale es tener `*` y
+  `class_name` con el mismo nombre. Y ningún script debe referirse al nombre
+  ambiguo `MCPDebuggerPlugin`/`McpDebuggerPlugin` (los dos addons usan uno cada
+  uno): escribirlo con su mayúscula exacta.
 - **Un plugin de editor que llame a `ProjectSettings.save()` reescribe
   `project.godot` en cada arranque**: se pierden los comentarios escritos a mano y
   las líneas que igualan el valor por defecto del motor. Aquí pasó con el plugin
@@ -630,6 +641,7 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 | `docs/maps/ZONE_001.md` | dimensiones y distribución del mapa de prueba |
 | `docs/assets/TEXTURAS.md` | inventario de texturas: lo que hay, lo que se encarga y su formato exacto |
 | `docs/tooling/GODOT_MCP.md` | el editor con el agente dentro: arrancarlo, jugar el juego con reloj determinista, y las dos trampas del addon |
+| `docs/tooling/GODOT_AI.md` | el segundo puente, el que construye: instalarlo verificado, el argv del cliente y por qué, y la trampa del autoload resuelta al revés |
 
 ## Git
 
