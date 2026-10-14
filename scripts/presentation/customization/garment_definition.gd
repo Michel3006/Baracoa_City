@@ -14,7 +14,7 @@ extends RefCounted
 ## color y no se tocan.
 
 ## Qué parte del cuerpo viste la prenda.
-enum Part { SHIRT, HAIR }
+enum Part { SHIRT, HAIR, HAIR_SHAPE }
 
 ## Identificador (los del `GarmentCatalog`).
 var id: StringName = &""
