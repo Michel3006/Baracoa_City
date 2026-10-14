@@ -448,6 +448,12 @@ godot --script res://tests/support/screenshot.gd -- /tmp/shot.png 60 216 380 1
 
 # reimportar tras cambiar project.godot
 godot --headless --import
+
+# el editor con el puente del agente (godot-mcp): ver docs/tooling/GODOT_MCP.md
+Xvfb :99 -screen 0 1280x1024x24 &
+export DISPLAY=:99
+godot --editor --path /workspaces/Baracoa_City --rendering-driver opengl3 >/tmp/opencode/godot-editor.log 2>&1 &
+ss -ltn | grep 6550   # el puente escucha aquí cuando el editor está listo
 ```
 
 Tres avisos sobre estos comandos:
@@ -489,6 +495,11 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 - `export LC_ALL=C LANG=C` para quitar el ruido `xkbcommon` en consola.
 - `~/.local/bin` puede no existir en una máquina nueva: crearlo antes del
   `ln -sf`, o el enlace falla.
+- El **editor** con el puente del agente (`addons/godot_mcp`, servidor MCP en
+  `.opencode/opencode.json`) da lo que las suites no pueden: reloj de juego
+  determinista, input inyectado, estado en vivo y capturas reales. Necesita el
+  editor abierto (aquí, bajo `xvfb`). Detalles, comandos y dos trampas medidas en
+  `docs/tooling/GODOT_MCP.md`.
 
 ## Detalles del diseño que conviene no redescubrir
 
@@ -593,6 +604,19 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
   "Method expected 0 argument(s), but called with 1" en cada señal, y el
   resultado seguía verde. Cualquier conexión con firma distinta necesita un
   wrapper; y un error por consola no es una suite verde (la regla de siempre).
+- **El autoload del puente del agente va SIN `*`**, al revés que los demás
+  (`autoload/MCPGameBridge`, no `"*res://…"`). Con `*` Godot lo registra como
+  singleton global y choca con el `class_name MCPGameBridge` del propio script: el
+  autoload no se instancia, el puente queda muerto y **las seis suites siguen en
+  verde**. Se comprueba preguntándoselo al juego en marcha, no leyendo
+  `project.godot`.
+- **Un plugin de editor que llame a `ProjectSettings.save()` reescribe
+  `project.godot` en cada arranque**: se pierden los comentarios escritos a mano y
+  las líneas que igualan el valor por defecto del motor. Aquí pasó con el plugin
+  del puente; las tres líneas que se fueron (`physics_ticks_per_second=60`,
+  `msaa_2d=0`, `stretch/aspect="keep"`) se comprobó leyendo los valores efectivos
+  que siguen siendo los mismos. La documentación va en `AGENTS.md`, no en
+  `project.godot`.
 
 ## Documentación relacionada
 
@@ -605,6 +629,7 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 | `docs/ROADMAP.md` | fases y checklist |
 | `docs/maps/ZONE_001.md` | dimensiones y distribución del mapa de prueba |
 | `docs/assets/TEXTURAS.md` | inventario de texturas: lo que hay, lo que se encarga y su formato exacto |
+| `docs/tooling/GODOT_MCP.md` | el editor con el agente dentro: arrancarlo, jugar el juego con reloj determinista, y las dos trampas del addon |
 
 ## Git
 
