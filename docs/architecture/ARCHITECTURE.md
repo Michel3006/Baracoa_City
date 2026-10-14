@@ -182,7 +182,7 @@ tests/
     ├── world_physics_runner.gd     6 pruebas
     ├── combat_runner.gd            16 pruebas
     ├── npc_combat_runner.gd        22 pruebas
-    ├── startup_runner.gd           35 pruebas
+    ├── startup_runner.gd           36 pruebas
     └── inventory_runner.gd         9 pruebas
 ```
 

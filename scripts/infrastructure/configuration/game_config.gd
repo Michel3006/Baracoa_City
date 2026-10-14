@@ -543,6 +543,15 @@ const INVENTORY_EQUIPPED := Color("7cf0a8")
 const INVENTORY_TEXT := Color("d9e6df")
 const INVENTORY_OVERLAY := Color(0.0, 0.0, 0.0, 0.5)
 
+# --- Ropa por defecto (plan de ropa y peinados) ---
+## Con qué arranca el jugador vestido: ids de `GarmentCatalog` que `PlayerView`
+## pone al construir sus capas, así que se ven en cuanto arranca el juego y sin
+## abrir el vestuario. `&""` dejaría el torso desnudo, como antes de este ajuste.
+## Los colores tienen que respetar la regla de los tintes de estado (ni el rojo
+## del daño ni el violeta del aturdimiento), igual que cualquier otra prenda.
+const DEFAULT_SHIRT := &"shirt_blue"
+const DEFAULT_HAIR := &"hair_brown"
+
 # --- Vestuario (UI, plan de ropa y peinados) ---
 ## Panel lateral derecho. Se pega al borde y deja libre el centro de la pantalla,
 ## donde esta el jugador, para que el mundo se siga leyendo mientras se elige la

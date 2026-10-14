@@ -127,7 +127,7 @@ mientras se hacían las medidas):
 | world_physics | 6/6 | 6/6 |
 | combat | 16/16 | 16/16 |
 | npc_combat | 22/22 | 22/22 |
-| startup | 29/29 | **35/35** (+6 de la pantalla) |
+| startup | 29/29 | **36/36** (+6 de la pantalla) |
 | inventory | 9/9 | 9/9 |
 
 Ninguna suite con `SCRIPT ERROR` ni fuga de nodos. Los seis casos nuevos de

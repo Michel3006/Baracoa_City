@@ -71,7 +71,7 @@ cambia de fila con arriba/abajo, confirma con `E`. Elegir es ponerse.
 ```bash
 # Suites con los casos de la prenda.
 godot --headless --script res://tests/support/test_runner.gd          # 237/237
-godot --headless --script res://tests/integration/startup_runner.gd   # 35/35
+godot --headless --script res://tests/integration/startup_runner.gd   # 36/36
 ```
 
 Y la comprobación de que **se ve** (requiere `xvfb`, no vale `--headless`):

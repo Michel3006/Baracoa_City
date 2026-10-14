@@ -64,6 +64,7 @@ func _run() -> void:
 	await _check("un golpe real del jugador entra al muñeco y reacciona", _dummy_takes_a_hit_and_reacts)
 	await _check("un golpe fuerte al muñeco congela su presentador y se descongela solo", _dummy_presenter_hit_stops)
 	await _check("el muñeco muere y reaparece a los dos segundos", _dummy_dies_and_respawns)
+	await _check("el jugador arranca con ropa y pelo por defecto", _player_starts_dressed_by_default)
 	await _check("al jugador se le puede poner y quitar ropa", _garment_can_be_put_on_and_taken_off)
 	await _check("la prenda sigue al cuerpo sin reloj propio", _garment_follows_the_body_state)
 	await _check("la prenda se dibuja encima del cuerpo y no toca la física", _garment_is_a_layer_over_the_body)
@@ -1033,6 +1034,41 @@ func _count_overlay_color(layer: GarmentLayer, color: Color) -> int:
 	return total
 
 
+## El jugador arranca vestido: `GameConfig.DEFAULT_SHIRT` y `DEFAULT_HAIR` están
+## puestos desde que se construye la vista, sin abrir el vestuario, y las capas
+## los dibujan. Es lo que se ve al darle a F5 sin tocar nada.
+##
+## El caso va el primero de la sección de ropa y **mide el estado inicial**: si
+## otro caso que lo toque pasara antes, este mediría lo que dejara ese caso y no
+## el arranque (misma razón por la que el primer caso de la suite mira la escena
+## principal declarada).
+func _player_starts_dressed_by_default() -> void:
+	var player := _player_or_report()
+	if player == null:
+		return
+	var state := player.appearance_state()
+	_context.check_equal(
+		state.shirt_id, GameConfig.DEFAULT_SHIRT, "el jugador no arranca con la camiseta por defecto"
+	)
+	_context.check_equal(
+		state.hair_id, GameConfig.DEFAULT_HAIR, "el jugador no arranca con el peinado por defecto"
+	)
+	var layers := _garment_layers(player)
+	var shirt := layers.get(GarmentDefinition.Part.SHIRT) as GarmentLayer
+	var hair := layers.get(GarmentDefinition.Part.HAIR) as GarmentLayer
+	if not _context.check(shirt != null and hair != null, "al jugador le faltan las capas de ropa"):
+		return
+	await _settle(2)
+	_context.check(
+		_paints_garment(shirt, GarmentDefinition.Part.SHIRT, GameConfig.DEFAULT_SHIRT),
+		"la camiseta por defecto no se dibuja al arrancar"
+	)
+	_context.check(
+		_paints_garment(hair, GarmentDefinition.Part.HAIR, GameConfig.DEFAULT_HAIR),
+		"el peinado por defecto no se dibuja al arrancar"
+	)
+
+
 ## La ropa es cosmética: se pone y se quita, y mientras no hay nada puesto la
 ## capa no dibuja nada (no tapa al cuerpo con una prenda fantasma).
 func _garment_can_be_put_on_and_taken_off() -> void:
@@ -1564,6 +1600,19 @@ func _appearance_preview_mirrors_the_body() -> void:
 		"falta el espejo de la vista previa"
 	):
 		return
+
+	# El espejo se mide contra el cuerpo del jugador y la coreografía dura varios
+	# fotogramas con el panel abierto. Un enemigo de la zona que le entre en ese hueco
+	# cambia el estado del cuerpo (golpe, aturdimiento, muerte) por debajo del caso, y
+	# entonces el espejo copia una hoja que el caso no puso: la medición se vuelve una
+	# carrera contra la IA y falla según le toque (medido: con el editor y varias
+	# instancias de juego comiendo CPU falló; en reposo, verde). Se deja la zona limpia
+	# y al jugador invulnerable, que es lo que ya hace el caso de la animación.
+	_clear_zone()
+	var session: GameSession = _game().session
+	var combat: MeleeCombat = session.combat if session != null else null
+	if combat != null:
+		combat.grant_invulnerability(60.0)
 
 	player.set_shirt(GarmentCatalog.SHIRT_PURPLE)
 	player.set_hair(GarmentCatalog.HAIR_BLUE)

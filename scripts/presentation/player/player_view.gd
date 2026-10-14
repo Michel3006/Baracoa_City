@@ -125,6 +125,12 @@ func _build_customization() -> void:
 	appearance = AppearanceState.new()
 	_shirt_layer = _add_garment_layer("ShirtLayer", GarmentDefinition.Part.SHIRT)
 	_hair_layer = _add_garment_layer("HairLayer", GarmentDefinition.Part.HAIR)
+	# El jugador arranca vestido con los valores por defecto: sin esto, el torso
+	# sale desnudo hasta que alguien abra el vestuario con C, que es justo lo que
+	# se ve ("no me veo ropa ni pelo"). Elegir en el vestuario lo cambia al
+	# instante; aquí solo se fija con qué se empieza.
+	set_shirt(GameConfig.DEFAULT_SHIRT)
+	set_hair(GameConfig.DEFAULT_HAIR)
 
 
 func _add_garment_layer(node_name: String, part: int) -> GarmentLayer:

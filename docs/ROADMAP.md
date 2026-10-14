@@ -50,7 +50,7 @@ Base terminada:
 - [x] Tests de integración de combate con la hitbox real (16 pruebas).
 - [x] Tests de integración de enemigos: IA, golpe de ida y vuelta, muerte y
       reaparición (22 pruebas).
-- [x] Arranque: la escena principal monta un único mundo funcional (35 pruebas).
+- [x] Arranque: la escena principal monta un único mundo funcional (36 pruebas).
 - [x] Tests de integración de inventario: mochila de arranque, la pantalla de la
       mochila (abrir/pausar, navegar, equipar, consumir, Tab) y la muerte (9
       pruebas).

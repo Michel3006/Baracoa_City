@@ -35,7 +35,7 @@ godot --headless --script res://tests/integration/npc_combat_runner.gd
 # RESULTADO: 22/22 pruebas correctas
 
 godot --headless --script res://tests/integration/startup_runner.gd
-# RESULTADO: 35/35 pruebas correctas
+# RESULTADO: 36/36 pruebas correctas
 
 godot --headless --script res://tests/integration/inventory_runner.gd
 # RESULTADO: 9/9 pruebas correctas
@@ -511,7 +511,7 @@ godot --headless --script res://tests/integration/combat_runner.gd
 # tests de integracion de NPC (22)
 godot --headless --script res://tests/integration/npc_combat_runner.gd
 
-# tests de integracion de arranque (35)
+# tests de integracion de arranque (36)
 godot --headless --script res://tests/integration/startup_runner.gd
 
 # tests de integracion de inventario (9)
