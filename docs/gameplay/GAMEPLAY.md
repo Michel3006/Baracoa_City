@@ -16,12 +16,16 @@ realidad.
 | Abrir / cerrar la mochila | `Tab` (pausa el mundo mientras está abierta) |
 | Navegar la mochila | `WASD` o flechas |
 | Confirmar en la mochila | `E` (equipa si es arma, consume si es consumible) |
+| Abrir / cerrar el vestuario | `C` (pausa el mundo mientras está abierto) |
+| Navegar el vestuario | `WASD` o flechas (arriba/abajo cambia de fila; izquierda/derecha elige) |
+| Confirmar en el vestuario | `E` (cierra con lo elegido) |
 | Reaparecer | `E` (solo tras morir, pasado el retraso) |
 | Cerrar el juego | `Esc` |
 
 Las acciones de entrada están declaradas en `project.godot` con nombres estables
 (`move_up`, `move_down`, `move_left`, `move_right`, `attack`, `attack_unarmed`,
-`interact`, `toggle_inventory`) para que reasignarlas no afecte al código.
+`interact`, `toggle_inventory`, `toggle_appearance`) para que reasignarlas no
+afecte al código.
 
 Las dos formas de golpear son independientes a propósito. Se puede pegar a puños
 con algo en la mano: el golpe desarmado **no des-equipa** el arma, usa su propio
@@ -408,6 +412,31 @@ cuando se confirma; los efectos (que el arma cambie, que la baya cure) los decid
   reaparición.
 - **`Esc` no la cierra**: `Esc` sigue cerrando el juego desde el autoload
   (`ui_cancel`); la mochila tiene su propia tecla a propósito.
+- **No se abre si el mundo ya está pausado** (por ejemplo con el vestuario
+  abierto): dos paneles pausando el árbol a la vez harían que cerrar el primero
+  reanudara el mundo por detrás del segundo. Mismo guardián en los dos paneles.
+
+## 8septies. El vestuario (la pantalla)
+
+`AppearancePanel` (`scripts/presentation/ui/appearance_panel.gd`) es la pantalla de
+ropa y peinados: el mismo patrón que la mochila (una `Control` a pantalla completa
+en su propia `CanvasLayer` sobre la del HUD, dibujada con `draw_rect` y
+`PixelFont`, en `PROCESS_MODE_ALWAYS`, pausando el árbol al abrirse). Detalle
+completo en `docs/personalizacion/IMPLEMENTACION_FASE_4.md`.
+
+- **Se abre y se cierra con `C`** (`toggle_appearance`). Dos filas: **camiseta** y
+  **peinado**. Arriba/abajo cambia de fila, izquierda/derecha elige. `E` cierra
+  conservando lo elegido. `Esc` no lo cierra (sigue saliendo del juego).
+- **Elegir es ponerse**: no hay borrador ni confirmación, la prenda se pone al
+  mover la selección. La fila no da la vuelta; la opción sí (carrusel) y la opción
+  0 es **"ninguna"**, porque el boxeador del pack va sin camiseta.
+- **La vista previa es un espejo del cuerpo**: copia cada fotograma la textura, el
+  fotograma, el volteo y el origen del cuerpo real y usa el **mismo**
+  `AppearanceState`, así que no puede desincronizarse ni tener reloj propio. Está
+  sin tinte a propósito: sirve para leer el color de la prenda.
+- **No se abre con el jugador muerto** ni con el mundo ya pausado.
+- **No cambia nada del combate**: la apariencia es presentación pura; vida,
+  stamina, posición, hitbox y `combat_target` son los mismos con ropa que sin ella.
 
 ## 9. Qué NO debe colarse en el MVP
 

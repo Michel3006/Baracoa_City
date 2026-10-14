@@ -156,6 +156,10 @@ func _on_player_spawned(player: PlayerView) -> void:
 		world_view.hud.bind(session)
 	if world_view.inventory_panel != null:
 		world_view.inventory_panel.bind(session)
+	if world_view.appearance_panel != null:
+		# El vestuario se engancha a la vista y no a la sesión: la ropa es
+		# presentación pura, y la sesión no tiene nada que decir sobre ella.
+		world_view.appearance_panel.bind(player)
 	GameLogger.info(
 		"Jugador listo en %s (%d NPC en la zona)" % [
 			player.global_position,

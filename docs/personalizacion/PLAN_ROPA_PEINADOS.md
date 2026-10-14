@@ -3,13 +3,19 @@
 Propuesta de Fases 1 a 4 para `docs/Plan_Ropa_Peinados_Baracoa_City.md`, sobre los
 datos medidos en `INFORME_COMPATIBILIDAD.md`.
 
-> **Estado (2026-10-13):** las tres preguntas del final están respondidas y la
-> **Fase 3 (coste 0) ya está implementada y probada**. Lo construido difiere de la
-> propuesta en dos puntos, que manda la implementación: (1) no se usó
+> **Estado (2026-10-14):** las tres preguntas del final están respondidas, la
+> **Fase 3 (coste 0) y la interfaz de selección ya están implementadas y probadas**
+> (`IMPLEMENTACION_FASE_3.md` y `IMPLEMENTACION_FASE_4.md`). Lo construido difiere
+> de la propuesta en tres puntos, que manda la implementación: (1) no se usó
 > `ShaderMaterial`, sino una **capa de superposición en CPU con caché** (no toca
-> el `ActorSprite` ni su material, y así el combate no ve nada nuevo); (2) los
-> nombres de archivo reales están en `IMPLEMENTACION_FASE_3.md`. Se usaron **0
-> generaciones** de PixelLab.
+> el `ActorSprite` ni su material, y así el combate no ve nada nuevo); (2) la UI no
+> es una pestaña dentro de la mochila sino un **panel propio con su tecla (`C`)**
+> que reutiliza el patrón de `InventoryPanel`; (3) los nombres de archivo reales
+> están en esos dos documentos. Se usaron **0 generaciones** de PixelLab.
+>
+> Decisión abierta que ya tiene respuesta del usuario: el **peinado con forma** se
+> **dibuja a mano y gratis** con `pixelart_workbench` (0 generaciones). Es el
+> siguiente incremento.
 
 ## Fase 1 — Estrategia gráfica
 
@@ -143,11 +149,17 @@ scripts/presentation/customization/
 - El estado de apariencia no entra en `GameSession` salvo para persistir, si se
   quiere más adelante.
 
-### Interfaz de selección
+### Interfaz de selección — **hecha** (`IMPLEMENTACION_FASE_4.md`)
 
 - Se reutiliza el patrón de `InventoryPanel` (mochila), que ya pausa el mundo y
-  navega con los ejes. `Tab` está ocupado por la mochila: usar otra tecla o una
-  pestaña dentro de la mochila. **Primero se valida el sistema visual sin UI**.
+  navega con los ejes. `Tab` está ocupado por la mochila, así que el vestuario usa
+  **`C`** (`toggle_appearance`) en un **panel propio**, no una pestaña dentro de la
+  mochila: así cada modal tiene una tecla y los dos son excluyentes.
+- **Elegir es ponerse** (sin borrador), la fila no da la vuelta, la opción sí, y la
+  opción 0 es "nada puesto".
+- La **vista previa** es un espejo del cuerpo real (copia `texture`/`frame`/`flip_h`
+  cada fotograma y apunta al **mismo** `AppearanceState`), sin reloj propio y sin
+  tinte: en el recuadro se lee la prenda, no el estado de combate.
 
 ### Pruebas que se añadirán
 
@@ -194,6 +206,10 @@ conocido y saldo restante.
 > **solo color** (coste 0). El resultado medido de las tres está en
 > `IMPLEMENTACION_FASE_3.md`; el peinado por color tiene una limitación conocida
 > (el personaje va rapado) que ese documento explica.
+>
+> **Respondido (2026-10-14):** para el **peinado con forma** el usuario eligió
+> **dibujarlo a mano, gratis**, con `pixelart_workbench` (0 generaciones), en vez de
+> una tanda de IA. La UI de selección ya está hecha (`IMPLEMENTACION_FASE_4.md`).
 
 1. **¿Apruebas la estrategia de coste 0** (camiseta por región/recolor) como
    prueba mínima, o prefieres **gastar 10–25 generaciones** en una camiseta de

@@ -366,6 +366,13 @@ func is_dodging() -> bool:
 	return _is_dodging
 
 
+## ¿El cuerpo está dibujando la muerte? Lo consultan la mochila y el vestuario para
+## no abrirse encima de la pantalla de muerte: pausar el mundo detrás de ella
+## rompería la reaparición, y elegir ropa no es algo que se haga muerto.
+func is_dead() -> bool:
+	return _is_dead
+
+
 ## Muerte: el cuerpo queda congelado en el ultimo fotograma.
 func set_dead(active: bool) -> void:
 	if _is_dead == active:

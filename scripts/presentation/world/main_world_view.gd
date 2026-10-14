@@ -34,6 +34,9 @@ var hud: Hud = null
 ## Pantalla de la mochila, en su propia capa por encima del HUD. Arranca
 ## cerrada e invisible; la abre el jugador con `toggle_inventory`.
 var inventory_panel: InventoryPanel = null
+## Pantalla del vestuario, en su propia capa por encima de la mochila. Arranca
+## cerrada e invisible; la abre el jugador con `toggle_appearance`.
+var appearance_panel: AppearancePanel = null
 var npc_spawner: NpcSpawner = null
 ## Muñeco de entrenamiento (sección 33). Vive en su propio generador, aparte de
 ## los enemigos: es un elemento del mundo, no un agente de la IA.
@@ -92,6 +95,7 @@ func _ready() -> void:
 	_build_fx_layer()
 	_build_hud()
 	_build_inventory()
+	_build_appearance()
 	_spawn_player(GameConfig.PLAYER_SPAWN)
 	_build_dummy()
 
@@ -137,6 +141,18 @@ func _build_inventory() -> void:
 	inventory_panel = InventoryPanel.new()
 	inventory_panel.name = "Inventory"
 	layer.add_child(inventory_panel)
+
+
+## El vestuario vive en una `CanvasLayer` aparte, añadida después de la de la
+## mochila para que se dibuje por encima si alguna vez coincidieran. No se mueve con
+## la cámara por la misma razón que el HUD, y arranca cerrado e invisible.
+func _build_appearance() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "AppearanceLayer"
+	add_child(layer)
+	appearance_panel = AppearancePanel.new()
+	appearance_panel.name = "Appearance"
+	layer.add_child(appearance_panel)
 
 
 func _spawn_player(spawn_position: Vector2) -> void:

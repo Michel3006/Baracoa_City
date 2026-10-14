@@ -6,7 +6,8 @@ diarias cuando se agotan). Cada operación potencialmente costosa se anota aquí
 resultado y saldo estimado. Si el coste no se conoce, se escribe "desconocido" y
 **no se genera** sin autorización (regla del plan).
 
-Saldo verificado el 2026-10-13: 40 / 40, 0 usadas.
+Saldo verificado el 2026-10-13: 40 / 40, 0 usadas. Reverificado el 2026-10-14
+(tras implementar la pantalla del vestuario): 40 / 40, 0 usadas.
 
 ## Operaciones
 
@@ -15,6 +16,9 @@ Saldo verificado el 2026-10-13: 40 / 40, 0 usadas.
 | 2026-10-13 | `get_balance` | comprobar saldo real | 0 | 40/40, trial | 40 |
 | 2026-10-13 | `search_help` | documentar coste/uso de las herramientas | 0 | 10–25 gen por operación de ropa; `pixelart_workbench` gratis | 40 |
 | 2026-10-13 | — (sin herramienta de PixelLab) | cerrar la prueba mínima con la vía de **coste 0** (recolor por región) | 0 | implementado y validado; **no se generó ninguna imagen** | 40 |
+| 2026-10-14 | `get_balance` | reverificar saldo antes de seguir | 0 | 40/40, trial, 0 usadas | 40 |
+| 2026-10-14 | — (sin herramienta de PixelLab) | pantalla del vestuario (Fase 4, `IMPLEMENTACION_FASE_4.md`) | 0 | implementada, validada por suites y en vivo; **0 imágenes** | 40 |
+| 2026-10-14 | `pixelart_workbench` (decidido, **aún no ejecutado**) | dibujar a mano el peinado **con forma** | 0 (herramienta local, no consume generaciones) | pendiente: es el siguiente incremento | 40 |
 
 > `get_balance` y `search_help` son de consulta/documentación, no consumen
 > generaciones. A partir de aquí, cualquier `transfer_outfit`, `edit_image`,

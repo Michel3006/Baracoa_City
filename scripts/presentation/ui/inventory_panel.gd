@@ -100,13 +100,19 @@ func _on_equipped_changed(_item_id: StringName) -> void:
 	queue_redraw()
 
 
-## Abre la mochila. Devuelve `false` y no hace nada si ya está abierta o si el
+## Abre la mochila. Devuelve `false` y no hace nada si ya está abierta, si el
 ## jugador está muerto (gestionar el equipamiento desde la pantalla de muerte no
-## tiene sentido, y pausar el mundo detrás de ella rompería la reaparición).
+## tiene sentido, y pausar el mundo detrás de ella rompería la reaparición) o si el
+## árbol ya está pausado por otro panel modal: la mochila y el vestuario no pueden
+## estar abiertos a la vez, porque al cerrar el primero el mundo se reanudaría por
+## detrás del segundo.
 func open() -> bool:
 	if is_open or _inventory == null or session == null or session.player == null:
 		return false
 	if session.player.is_dead:
+		return false
+	var tree := get_tree()
+	if tree != null and tree.paused:
 		return false
 	is_open = true
 	_selected = 0

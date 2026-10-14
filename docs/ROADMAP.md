@@ -44,13 +44,13 @@ Base terminada:
       borrosa a 384x216).
 - [x] Muerte y reaparición jugables, con tinte de pantalla y botón de revivir.
 - [x] Tests unitarios headless del dominio, del combate, de los enemigos, de los
-      sprites y de la integridad de scripts (148 pruebas).
+      sprites y de la integridad de scripts (237 pruebas).
 - [x] Tests de integración con física real: colisiones y sincronía
       dominio/vista (6 pruebas).
-- [x] Tests de integración de combate con la hitbox real (11 pruebas).
+- [x] Tests de integración de combate con la hitbox real (16 pruebas).
 - [x] Tests de integración de enemigos: IA, golpe de ida y vuelta, muerte y
-      reaparición (21 pruebas).
-- [x] Arranque: la escena principal monta un único mundo funcional (17 pruebas).
+      reaparición (22 pruebas).
+- [x] Arranque: la escena principal monta un único mundo funcional (35 pruebas).
 - [x] Tests de integración de inventario: mochila de arranque, la pantalla de la
       mochila (abrir/pausar, navegar, equipar, consumir, Tab) y la muerte (9
       pruebas).
@@ -85,6 +85,21 @@ Resuelto sin esperar texturas:
       paleta por tipo, así que golpean, caminan y mueren igual que el protagonista
       y las hojas de los bichos se borraron. Detalle en `docs/assets/TEXTURAS.md`
       (§2.1).
+
+## Personalización visual (encargo aparte)
+
+No sale de la especificación: es un encargo del desarrollador con **presupuesto
+cerrado de 40 generaciones de PixelLab al mes** (0 gastadas;
+`docs/personalizacion/PIXELLAB_GENERATION_LOG.md`). Tiene sus propios documentos y
+no cambia nada del juego (es presentación pura).
+
+- [x] Sistema de ropa y peinados de coste 0 (recolor por región): 7 camisetas y 6
+      peinados de color, en las 92 hojas y en las cuatro direcciones.
+- [x] Pantalla del vestuario (`C`), con vista previa espejo y exclusión mutua con
+      la mochila.
+- [ ] Peinado **con forma** (overlay por dirección), dibujado a mano y gratis con
+      `pixelart_workbench`.
+- [ ] Persistencia de la apariencia.
 
 ## Fase 2 — Multijugador
 

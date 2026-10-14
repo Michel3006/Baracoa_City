@@ -14,26 +14,28 @@ la primera tarea concreta.
 
 **Fase 1 (prototipo offline) terminada: pasos 1 a 10, combate, enemigos, sprites,
 HUD, feedback de golpe, inventario y los remates de UI (pantalla de la mochila,
-aturdimiento con tinte propio, muerte con texto). Quedan dos remates que dependen
-de cosas de fuera (texturas y play-test) y la Fase 2.**
+aturdimiento con tinte propio, muerte con texto). Encima va el subsistema de
+**personalización visual (ropa y peinados)**, que ya tiene sistema y pantalla
+(`C`). Quedan dos remates que dependen de cosas de fuera (texturas y play-test) y la
+Fase 2.**
 
 Última verificación, todo en verde:
 
 ```bash
 godot --headless --script res://tests/support/test_runner.gd
-# RESULTADO: 151/151 pruebas correctas
+# RESULTADO: 237/237 pruebas correctas
 
 godot --headless --script res://tests/integration/world_physics_runner.gd
 # RESULTADO: 6/6 pruebas correctas
 
 godot --headless --script res://tests/integration/combat_runner.gd
-# RESULTADO: 11/11 pruebas correctas
+# RESULTADO: 16/16 pruebas correctas
 
 godot --headless --script res://tests/integration/npc_combat_runner.gd
-# RESULTADO: 21/21 pruebas correctas
+# RESULTADO: 22/22 pruebas correctas
 
 godot --headless --script res://tests/integration/startup_runner.gd
-# RESULTADO: 17/17 pruebas correctas
+# RESULTADO: 35/35 pruebas correctas
 
 godot --headless --script res://tests/integration/inventory_runner.gd
 # RESULTADO: 9/9 pruebas correctas
@@ -334,6 +336,58 @@ Dos cosas que las suites no cuentan y conviene saber:
   Un `modulate` no se ve en el test que compara `modulate == tint`: eso solo dice
   que se aplicó, no qué sale dibujado.
 
+### El vestuario destapó una muerte que no llegaba a la vista
+
+De la pantalla del vestuario salieron dos cosas que no eran de la pantalla.
+
+**El jugador moría de pie.** `PlayerView.set_dead()` estaba entero — apaga la
+hitbox, corta el puñetazo en curso, reproduce el clip `DEAD` y pone el tinte gris —
+**y no lo llamaba nadie**: el presentador no lo sincronizaba. El jugador moría con
+la última animación puesta y `PlayerView.is_dead()` devolvía **siempre** `false`. El
+guardia que se estaba escribiendo ("no abrir el vestuario con el jugador muerto")
+habría sido código muerto. Los NPC y el muñeco de pruebas sí lo llamaban
+(`npc_presenter.gd`): el jugador era el único que no.
+
+Se sincroniza donde vive el reloj del combate, **antes** de los cortes de
+`_physics_process` (para que la muerte se dibuje también durante el hit stop y
+aunque no haya combate enganchado):
+
+```gdscript
+if _view != null:
+	_view.set_dead(_combat != null and _combat.is_dead)
+```
+
+`MeleeCombat.is_dead` lee del dominio (`player.is_dead`), así que la reaparición lo
+devuelve solo. Salió comprobado **en vivo** sin buscarlo: mientras se hacían las
+medidas, la IA mató al jugador de verdad y el fotograma traía clip `dead` y el tinte
+gris `(0.45, 0.45, 0.5, 0.85)`.
+
+**Los dos modales pausan el árbol.** Mochila y vestuario pausan al abrirse y
+reanudan al cerrarse. Con los dos abiertos, cerrar el primero **reanudaría el mundo
+por detrás del segundo**. La exclusión es el propio estado de pausa, comprobado al
+abrir (`if tree != null and tree.paused: return false`), en los dos paneles. Efecto
+buscado: el vestuario tampoco se abre si el mundo está pausado por otra cosa — y es
+la razón por la que no se abre con el jugador muerto, que es lo que rompería la
+reaparición.
+
+**Reglas que salen de esto:**
+
+- **Un método de vista completo y sin llamadas es un método muerto.** Buscar quién
+  lo llama, no que exista. Es el mismo género que "había dos mundos": lo que se ve
+  no estaba conectado a lo que se calcula.
+- **Dos pantallas que pausan el árbol no pueden estar abiertas a la vez**, y el
+  estado de pausa es la señal barata: cada una rechaza abrirse si ya está pausado.
+  Consecuencia a documentar, no a sortear: una pausa ajena (un menú futuro, el
+  congelado del puente del editor) también cierra la puerta, y eso es lo correcto.
+- **Contar píxeles en pantalla es la comprobación de que la prenda se ve**, y el
+  recuento es **exacto** porque el espejo dibuja a 1:1: 62 píxeles opacos de la
+  superposición tienen que ser 62 píxeles en pantalla. El A/B (62 → 0 → 62 al
+  quitar y devolver la prenda) es lo que ata el número a la prenda y no a otra cosa.
+- **Un fallo de escala en el test da 0 y parece que no se dibuja.** La primera
+  medida dio 0 píxeles con la prenda puesta: la lambda comparaba componentes 0–1
+  contra 0–255. Antes de dar por bueno un "no se ve", revisar la medida. (Mismo
+  patrón que el test que miraba el rectángulo antes de girar.)
+
 ## Qué falta, en orden
 
 Es la lista de trabajo real. No inventar alcance extra: la especificación ya
@@ -406,6 +460,26 @@ Tres casos de este cierre conviene recordarlos como patrón:
   violeta -> rojo -> normal avanzando los relojes a mano, porque con los
   presentadores apagados nada avanza el stun.
 
+### 4. Personalización visual (ropa y peinados) — sistema y pantalla hechos
+
+Encargo aparte del jugador, con presupuesto cerrado: **40 generaciones de PixelLab
+al mes, ninguna gastada todavía** (`docs/personalizacion/PIXELLAB_GENERATION_LOG.md`).
+No se gasta nada en generaciones hasta que haya auditoría, plan y autorización
+explícita.
+
+- **Sistema de coste 0** (`scripts/presentation/customization/`): recoloca los
+  píxeles de piel del torso y de la cabeza por los tonos de la prenda. 7 camisetas
+  y 6 peinados **de color**; la forma no existe todavía. Detalle en
+  `docs/personalizacion/IMPLEMENTACION_FASE_3.md`.
+- **Pantalla del vestuario** (`C`, `toggle_appearance`), patrón de la mochila, con
+  vista previa espejo del cuerpo y exclusión mutua con la mochila. Detalle en
+  `docs/personalizacion/IMPLEMENTACION_FASE_4.md`.
+- **Falta (ya decidido): el peinado con forma.** El color solo pinta la coronilla
+  porque el pack va rapado; la forma se **dibuja a mano y gratis** con
+  `pixelart_workbench` (0 generaciones), como capa nueva y con sus pruebas.
+- **Falta: persistencia.** La apariencia no se guarda en `GameSession`; se pierde
+  al cerrar el juego. Es una decisión aparte.
+
 ## Reglas que no se negocian
 
 1. **El dominio no depende de Godot.** `Player`, `Health`, `CharacterStats` y
@@ -425,19 +499,19 @@ Tres casos de este cierre conviene recordarlos como patrón:
 ## Comandos
 
 ```bash
-# tests unitarios (151)
+# tests unitarios (237)
 godot --headless --script res://tests/support/test_runner.gd
 
 # tests de integracion con fisica (6)
 godot --headless --script res://tests/integration/world_physics_runner.gd
 
-# tests de integracion de combate (11)
+# tests de integracion de combate (16)
 godot --headless --script res://tests/integration/combat_runner.gd
 
-# tests de integracion de NPC (21)
+# tests de integracion de NPC (22)
 godot --headless --script res://tests/integration/npc_combat_runner.gd
 
-# tests de integracion de arranque (17)
+# tests de integracion de arranque (35)
 godot --headless --script res://tests/integration/startup_runner.gd
 
 # tests de integracion de inventario (9)
@@ -642,11 +716,17 @@ ln -sf /tmp/opencode/godot/Godot_v4.7.2-stable_linux.x86_64 ~/.local/bin/godot
 | `docs/assets/TEXTURAS.md` | inventario de texturas: lo que hay, lo que se encarga y su formato exacto |
 | `docs/tooling/GODOT_MCP.md` | el editor con el agente dentro: arrancarlo, jugar el juego con reloj determinista, y las dos trampas del addon |
 | `docs/tooling/GODOT_AI.md` | el segundo puente, el que construye: instalarlo verificado, el argv del cliente y por qué, y la trampa del autoload resuelta al revés |
+| `docs/personalizacion/README.md` | ropa y peinados: qué hay, cómo se añade una prenda (coste 0) y qué queda abierto |
+| `docs/personalizacion/IMPLEMENTACION_FASE_3.md` | el sistema de coste 0: recolor por región, catálogo, medidas y limitaciones |
+| `docs/personalizacion/IMPLEMENTACION_FASE_4.md` | la pantalla del vestuario (`C`), la vista previa espejo, el guardián de muerte y la validación en vivo |
+| `docs/personalizacion/PIXELLAB_GENERATION_LOG.md` | generaciones de PixelLab gastadas (hoy: 0 de 40) |
 
 ## Git
 
 El repositorio vive en `main`. El commit inicial (`2ee61e0`) incluye la
 especificación, la estructura, los scripts, las escenas, los tests y la
 documentación; el cierre de Fase 1 (remates de UI) le sigue en los commits con
-mensaje referente al "cierre de Fase 1 (remates de UI)". Cada incremento se
-commitea y se empuja a `main` con los tests en verde.
+mensaje referente al "cierre de Fase 1 (remates de UI)". Después van los dos
+incrementos de personalización visual (sistema de ropa y peinados, y su pantalla),
+en `main` con los tests en verde. Cada incremento se commitea y se empuja a `main`
+con las suites en verde y sin `SCRIPT ERROR` en consola.

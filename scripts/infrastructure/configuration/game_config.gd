@@ -543,6 +543,55 @@ const INVENTORY_EQUIPPED := Color("7cf0a8")
 const INVENTORY_TEXT := Color("d9e6df")
 const INVENTORY_OVERLAY := Color(0.0, 0.0, 0.0, 0.5)
 
+# --- Vestuario (UI, plan de ropa y peinados) ---
+## Panel lateral derecho. Se pega al borde y deja libre el centro de la pantalla,
+## donde esta el jugador, para que el mundo se siga leyendo mientras se elige la
+## ropa. La vista previa va dentro del panel.
+const APPEARANCE_PANEL_SIZE := Vector2(152, 208)
+const APPEARANCE_PANEL_MARGIN := 4
+const APPEARANCE_PAD := 6
+## Altura de la franja del titulo, encima de la vista previa.
+const APPEARANCE_HEADER := 12
+## Recuadro de la vista previa. Dentro se dibuja el cuerpo real a tamaño real
+## (celda 42x44 del pack Hormelz) y a plena luz: es lo unico que enseña de verdad
+## como sienta la prenda.
+const APPEARANCE_PREVIEW_SIZE := Vector2(140, 56)
+## Cuanto sube la planta del personaje desde el borde bajo del recuadro de la
+## vista previa. La celda del pack deja unos pixeles vacios por debajo de los pies,
+## asi que apoyarlos en el borde los dejaria fuera.
+const APPEARANCE_PREVIEW_FOOT_LIFT := 8.0
+## Una fila del menu: el nombre de la parte arriba y el valor elegido debajo.
+const APPEARANCE_ROW_H := 24
+const APPEARANCE_ROW_GAP := 8
+## Lado de cada muestra de color de una prenda. Se dibujan los cuatro tonos.
+const APPEARANCE_SWATCH := 5
+## Textos del panel. Los nombres de las dos filas son contenido; "nada puesto" es
+## gramatica aparte por parte ("camiseta" es femenino y "peinado" masculino).
+const APPEARANCE_TITLE := "VESTUARIO"
+const APPEARANCE_LABEL_SHIRT := "CAMISETA"
+const APPEARANCE_LABEL_HAIR := "PEINADO"
+const APPEARANCE_NONE_SHIRT := "NINGUNA"
+const APPEARANCE_NONE_HAIR := "NINGUNO"
+## Ayuda de teclas, una linea por entrada. La fuente del proyecto solo tiene A-Z,
+## 0-9 y `! ? . - : ( )`: ni acentos ni flechas.
+const APPEARANCE_HINT: PackedStringArray = [
+	"IZQ.DER CAMBIAR",
+	"ARRIBA.ABAJO SECCION",
+	"C O E CERRAR",
+]
+## Colores del panel: fondo y borde, el recuadro de la vista previa (un tono mas
+## claro para que el personaje se lea dentro), textos y la fila activa.
+const APPEARANCE_BG := Color(0.07, 0.1, 0.09, 0.96)
+const APPEARANCE_BORDER := Color(0.35, 0.45, 0.4, 1.0)
+const APPEARANCE_PREVIEW_BG := Color(0.14, 0.19, 0.17, 1.0)
+const APPEARANCE_TEXT := Color("d9e6df")
+const APPEARANCE_MUTED := Color(0.55, 0.64, 0.59, 1.0)
+const APPEARANCE_SELECTED := Color("f0c05a")
+## El velo del vestuario es mas claro que el de la mochila a proposito: el jugador
+## sigue a la vista mientras se prueba la ropa, y un velo del 50 % dejaria el color
+## de la prenda ilegible justo cuando se esta eligiendo.
+const APPEARANCE_OVERLAY := Color(0.0, 0.0, 0.0, 0.3)
+
 # --- Muerte y reaparición (sección 8) ---
 ## Tiempo tras morir hasta que el botón de revivir hace algo. Sin espera, un botón
 ## mantenido devolvería la vida al instante y se perdería la lectura de qué pasó.

@@ -8,7 +8,8 @@ o un peinado sin romper nada y sin gastar presupuesto.
 | `docs/Plan_Ropa_Peinados_Baracoa_City.md` | El plan maestro (fases, presupuesto, entregables). Manda. |
 | `INFORME_COMPATIBILIDAD.md` | Fase 0: qué hay, qué se puede tocar, cuánto cuesta de verdad. |
 | `PLAN_ROPA_PEINADOS.md` | Estrategia de arte y arquitectura propuesta. |
-| `IMPLEMENTACION_FASE_3.md` | Lo que se construyó, medidas, validación y limitaciones. |
+| `IMPLEMENTACION_FASE_3.md` | Lo que se construyó (sistema visual), medidas, validación y limitaciones. |
+| `IMPLEMENTACION_FASE_4.md` | Lo que se construyó (pantalla del vestuario), medidas, validación en vivo y lo que falta. |
 | `PIXELLAB_GENERATION_LOG.md` | Registro de generaciones (hoy: **0 de 40**). |
 | `prueba_ropa_vs_base.png` | Demostración: base (izquierda) vs camiseta+pelo (derecha), 6×. |
 
@@ -48,6 +49,10 @@ Con eso ya sale en las **92 hojas** a la vez. Para probarlo:
 player.set_shirt(GarmentCatalog.SHIRT_ORANGE)   # o set_hair(...)
 ```
 
+Y en el juego, sin tocar código: **`C`** abre el **vestuario** (ver
+`IMPLEMENTACION_FASE_4.md`). Navega con los ejes, elige con izquierda/derecha,
+cambia de fila con arriba/abajo, confirma con `E`. Elegir es ponerse.
+
 ### Reglas que no se negocian
 
 1. **Cuatro tonos, en el orden base → sombra → luz → oscura.** Son las claves que
@@ -65,8 +70,8 @@ player.set_shirt(GarmentCatalog.SHIRT_ORANGE)   # o set_hair(...)
 
 ```bash
 # Suites con los casos de la prenda.
-godot --headless --script res://tests/support/test_runner.gd          # 225/225
-godot --headless --script res://tests/integration/startup_runner.gd   # 29/29
+godot --headless --script res://tests/support/test_runner.gd          # 237/237
+godot --headless --script res://tests/integration/startup_runner.gd   # 35/35
 ```
 
 Y la comprobación de que **se ve** (requiere `xvfb`, no vale `--headless`):
@@ -77,14 +82,17 @@ xvfb-run -a godot --rendering-driver opengl3 --script res://tests/support/screen
 ```
 
 Una captura se revisa **contando píxeles** del color de la prenda, no mirándola.
-Los números exactos de la última validación están en `IMPLEMENTACION_FASE_3.md`.
+Los números exactos de la última validación están en `IMPLEMENTACION_FASE_3.md` y
+`IMPLEMENTACION_FASE_4.md` (ahí el recuento es exacto: 62 píxeles de prenda en
+pantalla = 62 píxeles opacos de la superposición).
 
 ## Lo que queda abierto
 
 - **Peinado con forma.** El color de pelo solo pinta la coronilla, porque el pack
-  va rapado. Un peinado de verdad necesita un overlay por dirección: se puede
-  **dibujar gratis** con `pixelart_workbench`, o encargar a IA (1 tanda de 10–25
-  generaciones). Requiere decisión.
-- **Interfaz de selección.** Hoy se cambia por código; la UI (patrón de la
-  mochila) no está hecha.
-- **Persistencia.** La apariencia no se guarda en `GameSession`.
+  va rapado. Un peinado de verdad necesita un overlay por dirección: el usuario
+  decidió **dibujarlo gratis** con `pixelart_workbench` (0 generaciones). Es el
+  siguiente incremento; lleva su propia capa y sus pruebas.
+- **Interfaz de selección — hecha.** Vestuario con `C`, panel propio, vista previa
+  espejo y exclusión mutua con la mochila. Detalle en `IMPLEMENTACION_FASE_4.md`.
+- **Persistencia.** La apariencia no se guarda en `GameSession`; se pierde al
+  cerrar el juego.

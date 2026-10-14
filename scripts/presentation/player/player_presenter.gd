@@ -102,6 +102,18 @@ func set_fx_parent(node: Node2D) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# La muerte la dibuja la vista: `PlayerView.set_dead()` apaga la hitbox, corta
+	# el puñetazo en curso, reproduce el clip de morir y pone el tinte. Hasta ahora
+	# nadie lo llamaba, así que el jugador muerto se quedaba de pie con su última
+	# animación y `PlayerView.is_dead()` era siempre falso. El NPC y el muñeco de
+	# pruebas ya sincronizaban su muerte con la vista; esto los pone de acuerdo.
+	#
+	# Va antes de los cortes de abajo a propósito: así la muerte se dibuja también
+	# durante el hit stop y aunque no haya combate enganchado, en vez de depender de
+	# que el fotograma llegue hasta el final. `set_dead` no hace nada si el valor no
+	# cambió, así que llamarlo cada fotograma no cuesta.
+	if _view != null:
+		_view.set_dead(_combat != null and _combat.is_dead)
 	# Hit stop (sección 36): el golpe que acaba de entrar o de salir congela un
 	# instante el reloj del combate y el cuerpo. No se llama a `advance()` mientras
 	# dura, que es lo que de verdad congela el tiempo de combate; la vista sigue en

@@ -68,6 +68,12 @@ func _run() -> void:
 	await _check("la prenda sigue al cuerpo sin reloj propio", _garment_follows_the_body_state)
 	await _check("la prenda se dibuja encima del cuerpo y no toca la física", _garment_is_a_layer_over_the_body)
 	await _check("el peinado se pinta en la cabeza y no en el torso", _hair_paints_the_head_not_the_torso)
+	await _check("el vestuario abre con C, navega y pone la ropa", _appearance_panel_opens_and_dresses)
+	await _check("con el mundo parado el vestuario sigue oyendo la entrada", _appearance_hears_input_while_paused)
+	await _check("la mochila y el vestuario no pueden estar abiertos a la vez", _appearance_and_backpack_are_exclusive)
+	await _check("el vestuario no se abre con el jugador muerto", _appearance_refuses_when_dead)
+	await _check("la vista previa del vestuario es un espejo del cuerpo", _appearance_preview_mirrors_the_body)
+	await _check("con ropa el cuerpo camina, golpea y muere igual", _garment_does_not_break_the_animation)
 
 	_report()
 	quit(0 if _failed == 0 else 1)
@@ -1192,6 +1198,572 @@ func _hair_paints_the_head_not_the_torso() -> void:
 	player.set_shirt(&"")
 	player.set_hair(&"")
 	await _settle(1)
+
+
+# --- vestuario (plan de ropa y peinados, Fase 4) ---
+
+
+## Sonda de entrada: un nodo corriente, sin `PROCESS_MODE_ALWAYS`, que solo cuenta lo
+## que le llega. Es el testigo del caso de abajo: si el reparto de entrada respeta la
+## pausa, la sonda calla con el mundo parado mientras el panel sigue oyendo.
+class InputProbe extends Node:
+	var seen: int = 0
+
+	func _unhandled_input(event: InputEvent) -> void:
+		# Solo la pulsación: la suelta del mismo `_press` no dice nada de si el nodo
+		# sigue oyendo con el mundo parado.
+		var key := event as InputEventKey
+		if key != null and key.pressed:
+			seen += 1
+
+
+## Deja al jugador vivo, sano y con el combate en reposo, y lo devuelve.
+##
+## Casi todos los casos del vestuario necesitan partir de ahí: si el caso anterior lo
+## dejó muerto, aturdido o en mitad de un golpe, el panel no abre y el caso mediría
+## otra cosa. Tras la muerte hacen falta unos fotogramas, porque el cuerpo se entera
+## de la reaparición por el presentador, no al instante.
+func _living_player() -> PlayerView:
+	var session: GameSession = _game().session
+	if session == null or session.player == null:
+		return null
+	if session.player.is_dead:
+		session.respawn()
+	session.player.heal(999.0)
+	session.player.restore_stamina(float(GameConfig.PLAYER_MAX_STAMINA))
+	var combat: MeleeCombat = session.combat
+	if combat != null:
+		combat.grant_invulnerability(0.0)
+		combat.advance(GameConfig.INVULNERABILITY_TIME + GameConfig.DEFAULT_ATTACK_COOLDOWN + 1.0)
+	var view := _player_or_report()
+	if view == null:
+		return null
+	await _settle(3)
+	return view
+
+
+## Empuja una tecla al viewport como la empujaría el motor: pulsación y suelta, con el
+## código físico, que es como están atadas las acciones del proyecto.
+##
+## Se empuja en vez de llamar al método del panel a mano porque así se mide de paso
+## que la entrada llega de verdad, que es justo lo que se rompe cuando alguien olvida
+## el `PROCESS_MODE_ALWAYS` del panel.
+func _press(key: Key) -> void:
+	for pressed: bool in [true, false]:
+		var event := InputEventKey.new()
+		event.physical_keycode = key
+		event.pressed = pressed
+		root.push_input(event)
+
+
+## ¿La capa está pintando esa prenda? Se mira el color de la superposición y no el id:
+## lo que ve el jugador es el color, y un `id` bien puesto con una superposición vacía
+## se vería como si no llevara nada.
+func _paints_garment(layer: GarmentLayer, part: int, id: StringName) -> bool:
+	if layer == null:
+		return false
+	var definition := GarmentCatalog.definition(part, id)
+	if definition == null:
+		return false
+	return _count_overlay_color(layer, definition.palette[GarmentCatalog.SKIN_BASE]) > 0
+
+
+## El vestuario es la pantalla del plan de ropa: abre con C, se recorre con los ejes,
+## elegir es ponerse (no hay confirmación aparte) y E cierra dejando lo elegido.
+##
+## Mientras está abierto el mundo está pausado, así que lo que se mide ahí es el estado
+## del jugador y la vista previa; la capa del mundo se comprueba al cerrar, cuando el
+## árbol vuelve a la marcha.
+func _appearance_panel_opens_and_dresses() -> void:
+	var player := await _living_player()
+	if player == null:
+		return
+	var panel: AppearancePanel = _world().appearance_panel
+	if not _context.check(panel != null, "el mundo no tiene pantalla de vestuario"):
+		return
+	if not _context.check(
+		InputMap.has_action(AppearancePanel.ACTION_TOGGLE),
+		"el proyecto no declara la acción de abrir el vestuario"
+	):
+		return
+	var state := player.appearance_state()
+
+	player.set_shirt(&"")
+	player.set_hair(&"")
+	await _settle(2)
+	_context.check(not panel.is_open, "el vestuario arranca cerrado")
+	_context.check(not panel.visible, "y oculto")
+	_context.check(panel.size.x > 0.0 and panel.size.y > 0.0, "el panel quedó sin tamaño (0x0)")
+
+	# Geometría: el panel cabe en la pantalla y sus partes no se pisan entre sí. Es la
+	# comprobación que faltaba cuando el velo de la muerte nunca llegó a dibujarse por
+	# medir 0x0.
+	var screen := Rect2(Vector2.ZERO, panel.size)
+	var box: Rect2 = panel.panel_rect()
+	_context.check(screen.encloses(box), "el vestuario se sale de la pantalla: %s" % str(box))
+	var preview: Rect2 = panel.preview_rect()
+	_context.check(box.encloses(preview), "la vista previa se sale del panel")
+	var shirt_row: Rect2 = panel.row_rect(GarmentDefinition.Part.SHIRT)
+	var hair_row: Rect2 = panel.row_rect(GarmentDefinition.Part.HAIR)
+	_context.check(box.encloses(shirt_row), "la fila de la camiseta se sale del panel")
+	_context.check(box.encloses(hair_row), "la fila del peinado se sale del panel")
+	_context.check(preview.end.y <= shirt_row.position.y, "las filas pisan la vista previa")
+	_context.check(shirt_row.end.y <= hair_row.position.y, "las dos filas se solapan")
+
+	# Abrir con la tecla de verdad.
+	_press(KEY_C)
+	await _settle(2)
+	_context.check(panel.is_open, "C no abrió el vestuario")
+	_context.check(panel.visible, "el vestuario no se enseña al abrirse")
+	_context.check(self.paused, "el vestuario no pausó el mundo")
+	_context.check_equal(
+		panel.selected_part(), GarmentDefinition.Part.SHIRT, "no abrió en la fila de la camiseta"
+	)
+	_context.check_equal(
+		panel.selected_id(GarmentDefinition.Part.SHIRT), &"", "no abrió en 'nada puesto'"
+	)
+	_context.check_equal(
+		panel.row_value(GarmentDefinition.Part.SHIRT),
+		GameConfig.APPEARANCE_NONE_SHIRT,
+		"la fila de la camiseta no enseña 'nada'"
+	)
+
+	# Navegar es ponerse: la derecha pone la primera camiseta y no hay confirmación.
+	var first_shirt := GarmentCatalog.shirt_ids()[0]
+	_press(KEY_RIGHT)
+	await _settle(2)
+	_context.check_equal(
+		panel.selected_id(GarmentDefinition.Part.SHIRT),
+		first_shirt,
+		"la derecha no eligió la primera camiseta"
+	)
+	_context.check_equal(state.shirt_id, first_shirt, "elegir una camiseta no la puso en el jugador")
+	_context.check_equal(
+		panel.row_value(GarmentDefinition.Part.SHIRT),
+		GarmentCatalog.shirt(first_shirt).label,
+		"la fila no enseña el nombre de la camiseta elegida"
+	)
+	# La vista previa sí se rehace con el mundo parado: es lo que se está viendo.
+	var preview_shirt := panel.get_node_or_null("Preview/PreviewShirt") as GarmentLayer
+	if _context.check(preview_shirt != null, "el recuadro no tiene capa de camiseta"):
+		await _settle(2)
+		_context.check(
+			_paints_garment(preview_shirt, GarmentDefinition.Part.SHIRT, first_shirt),
+			"el recuadro no dibuja la camiseta elegida con el mundo parado"
+		)
+
+	# Bajar cambia de fila sin tocar la camiseta, y elegir peinado no la desviste.
+	_press(KEY_DOWN)
+	await _settle(1)
+	_context.check_equal(panel.selected_part(), GarmentDefinition.Part.HAIR, "abajo no cambió de fila")
+	_context.check_equal(
+		panel.selected_id(GarmentDefinition.Part.HAIR), &"", "el peinado no arranca en 'nada'"
+	)
+	_context.check_equal(state.hair_id, &"", "cambiar de fila puso un peinado solo")
+	var first_hair := GarmentCatalog.hair_ids()[0]
+	_press(KEY_RIGHT)
+	await _settle(2)
+	_context.check_equal(state.hair_id, first_hair, "elegir un peinado no lo puso")
+	_context.check_equal(state.shirt_id, first_shirt, "elegir el peinado cambió la camiseta")
+
+	# Subir vuelve a la camiseta con la elección guardada, y hacia atrás desde la
+	# primera vuelve a "nada": el carrusel da la vuelta.
+	_press(KEY_UP)
+	await _settle(1)
+	_context.check_equal(
+		panel.selected_part(), GarmentDefinition.Part.SHIRT, "arriba no volvió a la camiseta"
+	)
+	_context.check_equal(
+		panel.selected_id(GarmentDefinition.Part.SHIRT),
+		first_shirt,
+		"el cursor perdió la camiseta al cambiar de fila"
+	)
+	_press(KEY_LEFT)
+	await _settle(2)
+	_context.check_equal(state.shirt_id, &"", "hacia atrás desde la primera no volvió a 'nada'")
+
+	# E cierra y lo elegido se queda: no hay borrador que descartar.
+	_press(KEY_E)
+	await _settle(2)
+	_context.check(not panel.is_open, "E no cerró el vestuario")
+	_context.check(not panel.visible, "el vestuario sigue dibujándose después de cerrarlo")
+	_context.check(not self.paused, "cerrar no reanudó el mundo")
+	_context.check_equal(state.hair_id, first_hair, "cerrar deshizo el peinado elegido")
+	_context.check_equal(state.shirt_id, &"", "cerrar puso una camiseta que se había quitado")
+
+	# Con el mundo en marcha la capa ya dibuja lo que quedó puesto: aquí sí.
+	var shirt := _garment_layers(player).get(GarmentDefinition.Part.SHIRT) as GarmentLayer
+	var hair := _garment_layers(player).get(GarmentDefinition.Part.HAIR) as GarmentLayer
+	await _settle(2)
+	_context.check(not shirt.is_painting(), "la camiseta quitada sigue dibujándose en el mundo")
+	_context.check(
+		_paints_garment(hair, GarmentDefinition.Part.HAIR, first_hair),
+		"el peinado elegido no llega a dibujarse en el mundo"
+	)
+
+	# Reabrir con C coloca el cursor donde está el jugador, no en la primera opción.
+	_press(KEY_C)
+	await _settle(2)
+	_context.check(panel.is_open, "C no volvió a abrir el vestuario")
+	_context.check_equal(
+		panel.selected_id(GarmentDefinition.Part.SHIRT),
+		&"",
+		"al reabrir, el cursor no abrió en la camiseta que llevaba (ninguna)"
+	)
+	_context.check_equal(
+		panel.selected_id(GarmentDefinition.Part.HAIR),
+		first_hair,
+		"al reabrir, el cursor no abrió en el peinado que lleva puesto"
+	)
+	_press(KEY_C)
+	await _settle(2)
+	_context.check(not panel.is_open, "la segunda C no cerró el vestuario")
+	_context.check(not self.paused, "y dejó el mundo pausado")
+
+	player.set_shirt(&"")
+	player.set_hair(&"")
+	await _settle(2)
+
+
+## El vestuario va en `PROCESS_MODE_ALWAYS` porque con el mundo parado tiene que seguir
+## oyendo la entrada: si no, la tecla de cerrar no haría nada y el mundo se quedaría
+## pausado para siempre.
+##
+## El caso no se fía de leer el `process_mode`: comprueba que un nodo corriente del
+## árbol **no** recibe la entrada con el mundo parado y que el panel sí. Con las dos
+## mitades, el testigo demuestra que el reparto respeta la pausa.
+func _appearance_hears_input_while_paused() -> void:
+	var panel: AppearancePanel = _world().appearance_panel
+	if not _context.check(panel != null, "el mundo no tiene pantalla de vestuario"):
+		return
+	var player := await _living_player()
+	if player == null:
+		return
+	var probe := InputProbe.new()
+	probe.name = "InputProbe"
+	root.add_child(probe)
+	await _settle(1)
+
+	# En marcha la sonda oye: así vale como testigo de lo de abajo.
+	_press(KEY_B)
+	await _settle(1)
+	_context.check_equal(probe.seen, 1, "el reparto de entrada no llega al árbol")
+
+	_context.check(panel.open(), "el vestuario no se abre")
+	_context.check(self.paused, "el vestuario no pausa el mundo")
+	_context.check_equal(
+		panel.process_mode, Node.PROCESS_MODE_ALWAYS, "el vestuario no está en PROCESS_MODE_ALWAYS"
+	)
+	probe.seen = 0
+	_press(KEY_B)
+	await _settle(1)
+	_context.check_equal(
+		probe.seen, 0, "con el mundo parado un nodo corriente no debería oír la entrada"
+	)
+	_context.check(panel.is_open, "el vestuario se cerró solo")
+
+	# Y el panel sí la oye: C lo cierra con el árbol parado.
+	_press(KEY_C)
+	await _settle(1)
+	_context.check(not panel.is_open, "con el mundo parado, C no cerró el vestuario")
+	_context.check(not self.paused, "al cerrar, el mundo no volvió a la marcha")
+
+	probe.queue_free()
+	await _settle(1)
+
+
+## El mundo se pausa una sola vez: dos paneles abiertos a la vez lo dejarían corriendo
+## al cerrar el primero (cada uno des-pausa al cerrarse). Se comprueba por los dos
+## lados, porque la regla vale en los dos sentidos.
+func _appearance_and_backpack_are_exclusive() -> void:
+	var player := await _living_player()
+	if player == null:
+		return
+	var appearance: AppearancePanel = _world().appearance_panel
+	var backpack: InventoryPanel = _world().inventory_panel
+	if not _context.check(
+		appearance != null and backpack != null, "faltan el vestuario o la mochila"
+	):
+		return
+	_context.check(not self.paused, "el mundo no está en marcha para empezar")
+
+	_context.check(appearance.open(), "el vestuario no se abre")
+	_context.check(self.paused, "y no pausa el mundo")
+	_context.check(not backpack.open(), "la mochila se abrió encima del vestuario")
+	_context.check(appearance.is_open, "y cerró el vestuario")
+	_context.check(self.paused, "el mundo sigue pausado")
+	appearance.close()
+	_context.check(not self.paused, "al cerrar el vestuario el mundo vuelve a la marcha")
+
+	_context.check(backpack.open(), "la mochila no se abre")
+	_context.check(self.paused, "y no pausa el mundo")
+	_context.check(not appearance.open(), "el vestuario se abrió encima de la mochila")
+	_context.check(backpack.is_open, "y cerró la mochila")
+	_context.check(self.paused, "el mundo sigue pausado")
+	backpack.close()
+	_context.check(not self.paused, "al cerrar la mochila el mundo vuelve a la marcha")
+
+
+## Elegir ropa no es algo que se haga muerto: abrir el vestuario con la pantalla de
+## muerte delante pausaría el mundo detrás de ella y rompería la reaparición.
+##
+## De paso se mide que la muerte llega a la vista, que es lo que sincroniza el
+## presentador: sin eso el guardián del vestuario no tendría de dónde leer.
+func _appearance_refuses_when_dead() -> void:
+	var player := await _living_player()
+	if player == null:
+		return
+	var appearance: AppearancePanel = _world().appearance_panel
+	if not _context.check(appearance != null, "el mundo no tiene pantalla de vestuario"):
+		return
+	var session: GameSession = _game().session
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	if not _context.check(actor != null, "el jugador no tiene sprite de cuerpo"):
+		return
+
+	session.player.take_damage(session.player.health.maximum)
+	await _settle(3)
+	_context.check(session.player.is_dead, "el jugador no murió")
+	_context.check(player.is_dead(), "la vista no se enteró de la muerte: nadie dibuja la pose")
+	_context.check_equal(
+		actor.current_clip(), ActorSprite.DEAD, "el cuerpo muerto no usa la animación de morir"
+	)
+	_context.check(not appearance.open(), "el vestuario se abre con el jugador muerto")
+	_context.check(not self.paused, "y no debería haber pausado el mundo detrás de la muerte")
+
+	# Al reaparecer vuelve a poder abrirse.
+	session.respawn()
+	await _settle(3)
+	_context.check(not player.is_dead(), "al reaparecer la vista sigue dibujando la muerte")
+	_context.check(
+		actor.current_clip() != ActorSprite.DEAD, "el cuerpo revivido sigue con la animación de morir"
+	)
+	_context.check(appearance.open(), "y con el jugador vivo el vestuario no se abre")
+	appearance.close()
+	await _settle(2)
+
+
+## La vista previa es un espejo del cuerpo, no un muñeco aparte: copia su hoja,
+## fotograma, anclaje y espejo, y sus capas de ropa apuntan al cuerpo de verdad. Si el
+## recuadro tuviera estado propio podría enseñar una prenda que el jugador no lleva.
+func _appearance_preview_mirrors_the_body() -> void:
+	var player := await _living_player()
+	if player == null:
+		return
+	var panel: AppearancePanel = _world().appearance_panel
+	if not _context.check(panel != null, "el mundo no tiene pantalla de vestuario"):
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	var mirror := panel.get_node_or_null("Preview") as Node2D
+	var body := panel.get_node_or_null("Preview/PreviewBody") as Sprite2D
+	var preview_shirt := panel.get_node_or_null("Preview/PreviewShirt") as GarmentLayer
+	var preview_hair := panel.get_node_or_null("Preview/PreviewHair") as GarmentLayer
+	if not _context.check(
+		actor != null and mirror != null and body != null
+		and preview_shirt != null and preview_hair != null,
+		"falta el espejo de la vista previa"
+	):
+		return
+
+	player.set_shirt(GarmentCatalog.SHIRT_PURPLE)
+	player.set_hair(GarmentCatalog.HAIR_BLUE)
+	await _settle(2)
+	_context.check(panel.open(), "el vestuario no se abre")
+	await _settle(2)
+
+	# Las capas del recuadro no tienen estado propio: apuntan al cuerpo y al estado de
+	# ropa del jugador, literalmente.
+	_context.check(
+		preview_shirt.actor == actor and preview_hair.actor == actor,
+		"las capas del recuadro no apuntan al cuerpo de verdad"
+	)
+	_context.check(
+		preview_shirt.appearance == player.appearance_state(),
+		"el recuadro no comparte el estado de ropa del jugador"
+	)
+
+	# El espejo copia lo que el cuerpo está dibujando, campo a campo.
+	_context.check_equal(body.texture, actor.texture, "el espejo no copió la hoja del cuerpo")
+	_context.check_equal(body.frame, actor.frame, "el espejo no copió el fotograma")
+	_context.check_equal(body.hframes, actor.hframes, "el espejo no copió las columnas de la rejilla")
+	_context.check_equal(body.vframes, actor.vframes, "el espejo no copió las filas de la rejilla")
+	_context.check_equal(body.offset, actor.offset, "el espejo no copió el anclaje")
+	_context.check_equal(body.flip_h, actor.flip_h, "el espejo no copió el espejo horizontal")
+	_context.check_equal(body.centered, actor.centered, "el espejo no copió el centrado")
+
+	# Y se dibuja dentro del recuadro, con los pies apoyados cerca del borde bajo. Se
+	# mide el rectángulo que se dibuja de verdad, no la posición del nodo.
+	var box := panel.preview_rect()
+	var drawn := body.get_rect()
+	drawn.position += mirror.position
+	_context.check(box.encloses(drawn), "el espejo no cabe en el recuadro: %s fuera de %s" % [str(drawn), str(box)])
+	_context.check(
+		drawn.end.y >= box.end.y - 16.0,
+		"el espejo queda despegado del suelo del recuadro: %s contra %s" % [str(drawn), str(box)]
+	)
+	_context.check(
+		_paints_garment(preview_shirt, GarmentDefinition.Part.SHIRT, GarmentCatalog.SHIRT_PURPLE)
+		and _paints_garment(preview_hair, GarmentDefinition.Part.HAIR, GarmentCatalog.HAIR_BLUE),
+		"el recuadro no enseña la ropa que lleva puesta el jugador"
+	)
+
+	# El espejo sigue al cuerpo aunque el cuerpo no se mueva: se le cambia la
+	# orientación (el presentador está parado, así que se queda) y el recuadro tiene
+	# que copiar la hoja nueva. Se parte de una orientación puesta a mano y no de la
+	# que dejara el caso anterior, que depende de por dónde acabara caminando.
+	player.set_facing(Vector2.DOWN)
+	await _settle(2)
+	var before_sheet := body.texture
+	player.set_facing(Vector2.UP)
+	await _settle(2)
+	_context.check(body.texture != before_sheet, "el espejo no siguió el cambio de orientación")
+	_context.check_equal(
+		body.texture, actor.texture, "el espejo no copió la hoja de la orientación nueva"
+	)
+	_context.check_equal(body.offset, actor.offset, "el espejo no copió el anclaje de la orientación nueva")
+	player.set_facing(Vector2.DOWN)
+	await _settle(2)
+
+	# Y lo que enseña el recuadro es la misma superposición que acaba en el mundo, no
+	# una parecida: se elige otra camiseta desde el menú y se comparan los píxeles.
+	panel.move_selection(Vector2i(1, 0))
+	await _settle(2)
+	var chosen := player.appearance_state().shirt_id
+	_context.check(chosen != GarmentCatalog.SHIRT_PURPLE, "elegir no cambió de camiseta")
+	_context.check(
+		_paints_garment(preview_shirt, GarmentDefinition.Part.SHIRT, chosen),
+		"el recuadro no se rehízo al elegir otra camiseta"
+	)
+	var preview_image := preview_shirt.texture.get_image().get_data()
+	panel.close()
+	await _settle(2)
+	var world_shirt := _garment_layers(player).get(GarmentDefinition.Part.SHIRT) as GarmentLayer
+	if not _context.check(
+		world_shirt != null and world_shirt.texture != null, "el mundo no dibuja la camiseta elegida"
+	):
+		return
+	_context.check_equal(
+		preview_image,
+		world_shirt.texture.get_image().get_data(),
+		"el recuadro y el mundo no enseñan la misma camiseta"
+	)
+
+	player.set_shirt(&"")
+	player.set_hair(&"")
+	await _settle(2)
+
+
+## La ropa no toca la animación: con camiseta y peinado puestos el cuerpo camina, golpea
+## y muere igual, y las dos capas siguen al cuerpo sin separarse. Se mide además que
+## elegir ropa no cambia ni la vida, ni la posición, ni el cuerpo de combate.
+func _garment_does_not_break_the_animation() -> void:
+	var player := await _living_player()
+	if player == null:
+		return
+	var actor := player.get_node_or_null("Actor") as ActorSprite
+	var layers := _garment_layers(player)
+	var shirt := layers.get(GarmentDefinition.Part.SHIRT) as GarmentLayer
+	var hair := layers.get(GarmentDefinition.Part.HAIR) as GarmentLayer
+	if not _context.check(
+		actor != null and shirt != null and hair != null, "faltan el cuerpo o las capas de ropa"
+	):
+		return
+	var panel: AppearancePanel = _world().appearance_panel
+	if not _context.check(panel != null, "el mundo no tiene pantalla de vestuario"):
+		return
+	var session: GameSession = _game().session
+	var combat: MeleeCombat = session.combat
+	if not _context.check(combat != null, "la sesión no tiene combate"):
+		return
+
+	# Los enemigos de la zona no deben meter ruido en una secuencia de dos segundos.
+	_clear_zone()
+	combat.grant_invulnerability(60.0)
+	player.set_shirt(&"")
+	player.set_hair(&"")
+	await _settle(2)
+
+	# Elegir ropa no puede tocar nada del juego: se recorre el menú entero y se compara.
+	var health: float = session.player.health.current
+	var stamina: float = session.player.stamina
+	var position := player.global_position
+	var target := player.combat_target
+	var sensor := player.hitbox
+	_context.check(panel.open(), "el vestuario no se abre")
+	for _step: int in range(GarmentCatalog.shirt_ids().size() + 1):
+		panel.move_selection(Vector2i(1, 0))
+		await _settle(1)
+	panel.move_selection(Vector2i(0, 1))
+	for _step: int in range(GarmentCatalog.hair_ids().size() + 1):
+		panel.move_selection(Vector2i(1, 0))
+		await _settle(1)
+	panel.close()
+	await _settle(2)
+	_context.check_equal(session.player.health.current, health, "elegir ropa cambió la vida")
+	_context.check_equal(session.player.stamina, stamina, "elegir ropa cambió la stamina")
+	_context.check_equal(player.global_position, position, "elegir ropa movió al jugador")
+	_context.check(player.combat_target == target, "elegir ropa cambió el cuerpo de combate")
+	_context.check(player.hitbox == sensor, "elegir ropa cambió la hitbox")
+
+	# Con ropa puesta, caminar: el cuerpo se mueve y la prenda lo sigue en cada fotograma.
+	player.set_shirt(GarmentCatalog.SHIRT_YELLOW)
+	player.set_hair(GarmentCatalog.HAIR_BLACK)
+	await _settle(2)
+	var desync := 0
+	var walked := false
+	for action: StringName in [&"move_right", &"move_left", &"move_up", &"move_down"]:
+		var from := player.global_position
+		Input.action_press(action, 1.0)
+		for _frame: int in range(12):
+			await physics_frame
+			if actor.frame != shirt.frame or actor.flip_h != shirt.flip_h or actor.offset != shirt.offset:
+				desync += 1
+		Input.action_release(action)
+		walked = walked or player.global_position != from
+	await _settle(2)
+	_context.check(walked, "con ropa el jugador no se movió en ninguna dirección")
+	_context.check_equal(desync, 0, "caminando con ropa, la prenda y el cuerpo se separaron %d veces" % desync)
+	_context.check(shirt.is_painting(), "caminando con ropa, la camiseta dejó de pintar")
+
+	# Golpear: el cuerpo usa su animación de golpe y la prenda la sigue.
+	Input.action_press(&"attack", 1.0)
+	var attack_clips: Dictionary = {}
+	var attack_desync := 0
+	for frame: int in range(30):
+		await physics_frame
+		if frame == 2:
+			Input.action_release(&"attack")
+		if ActorSprite.is_attack_clip(actor.current_clip()):
+			attack_clips[str(actor.current_clip())] = true
+			if actor.frame != shirt.frame or actor.flip_h != shirt.flip_h:
+				attack_desync += 1
+	await _settle(int(ceil(GameConfig.ATTACK_RECOVERY * 60.0)) + 6)
+	_context.check(not attack_clips.is_empty(), "con ropa el cuerpo no llegó a golpear")
+	_context.check_equal(attack_desync, 0, "golpeando con ropa, la prenda y el cuerpo se separaron")
+	_context.check(shirt.is_painting(), "golpeando con ropa, la camiseta dejó de pintar")
+
+	# Morir: la vista se entera (pose yacente) y la prenda sigue el clip de la muerte.
+	combat.grant_invulnerability(0.0)
+	session.player.take_damage(session.player.health.maximum)
+	await _settle(3)
+	_context.check(player.is_dead(), "con ropa el cuerpo no se enteró de la muerte")
+	_context.check_equal(
+		actor.current_clip(), ActorSprite.DEAD, "con ropa el cuerpo muerto no usa el clip de morir"
+	)
+	await _settle(2)
+	_context.check(shirt.is_painting(), "muerto, la camiseta dejó de pintar")
+	_context.check_equal(shirt.frame, actor.frame, "muerto, la prenda no sigue el fotograma del cuerpo")
+
+	# Y la reaparición lo devuelve todo.
+	session.respawn()
+	await _settle(3)
+	_context.check(not player.is_dead(), "al reaparecer el cuerpo sigue muerto")
+	_context.check(
+		actor.current_clip() != ActorSprite.DEAD, "el cuerpo revivido sigue en la animación de morir"
+	)
+	player.set_shirt(&"")
+	player.set_hair(&"")
+	await _settle(2)
 
 
 ## La cámara tiembla cuando un golpe conecta (sección 37), y el temblor se

@@ -163,6 +163,10 @@ scripts/
 │   ├── npc/                        cuerpo, presentador y aparición de enemigos
 │   ├── fx/slash_effect.gd          arco del golpe
 │   ├── hud/hud.gd                  barras de vida, stamina y golpe, e icono de arma
+│   ├── ui/pixel_font.gd            mini fuente 3x5 dibujada con draw_rect
+│   ├── ui/inventory_panel.gd       pantalla de la mochila (Tab)
+│   ├── ui/appearance_panel.gd      pantalla del vestuario (C)
+│   ├── customization/             ropa y peinados de coste 0: catálogo, estado, capa
 │   └── camera/world_camera.gd      seguimiento y límites
 ├── infrastructure/
 │   ├── configuration/game_config.gd
@@ -173,13 +177,13 @@ tests/
 ├── support/test_runner.gd          runner unitario
 ├── support/screenshot.gd           captura de frame
 ├── support/script_test_context.gd  aserciones
-├── unit/                           15 archivos, 135 pruebas
+├── unit/                           26 archivos, 237 pruebas
 └── integration/
     ├── world_physics_runner.gd     6 pruebas
-    ├── combat_runner.gd            11 pruebas
-    ├── npc_combat_runner.gd        20 pruebas
-    ├── startup_runner.gd           17 pruebas
-    └── inventory_runner.gd         5 pruebas
+    ├── combat_runner.gd            16 pruebas
+    ├── npc_combat_runner.gd        22 pruebas
+    ├── startup_runner.gd           35 pruebas
+    └── inventory_runner.gd         9 pruebas
 ```
 
 ### El inventario y la mano
